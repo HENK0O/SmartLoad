@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { Mail, Lock, Loader2 } from "lucide-react";
@@ -11,6 +12,7 @@ interface AuthFormProps {
 
 export default function AuthForm({ onSwitch }: AuthFormProps) {
   const { user } = useAuth();
+  const router = useRouter();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,6 +39,7 @@ export default function AuthForm({ onSwitch }: AuthFormProps) {
           password,
         });
         if (error) throw error;
+        router.push("/programs");
       }
     } catch (err: unknown) {
       const message =
