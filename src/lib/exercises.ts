@@ -11,6 +11,7 @@ export const EXERCISE_CATALOG: ExerciseDef[] = [
   { baseName: "Développé incliné", muscleGroup: "Pectoraux", category: "PUSH", supports: ["Barre", "Haltères"] },
   { baseName: "Chest press", muscleGroup: "Pectoraux", category: "PUSH", supports: ["Machine"] },
   { baseName: "Chest press inclinée", muscleGroup: "Pectoraux", category: "PUSH", supports: ["Machine"] },
+  { baseName: "Développé couché convergent", muscleGroup: "Pectoraux", category: "PUSH", supports: ["Machine"] },
   { baseName: "Pec Deck", muscleGroup: "Pectoraux", category: "PUSH", supports: ["Machine"] },
   { baseName: "Dips lestés", muscleGroup: "Pectoraux", category: "PUSH", supports: ["Poids de corps"] },
   // PUSH - Épaules

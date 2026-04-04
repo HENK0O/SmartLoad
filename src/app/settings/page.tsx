@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
-import { LogOut, Check, Scale, User, CreditCard } from "lucide-react";
+import { LogOut, Check, Scale, User, CreditCard, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/lib/theme";
 
 export default function SettingsPage() {
   const { user, loading, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [saving, setSaving] = useState(false);
@@ -51,6 +53,21 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold tracking-tight mb-6">Paramètres</h1>
 
       <div className="flex flex-col gap-3">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            {theme === "dark" ? <Moon className="h-4 w-4 text-neutral-500" /> : <Sun className="h-4 w-4 text-neutral-500" />}
+            <h2 className="text-sm font-semibold">Apparence</h2>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setTheme("dark")} className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold active:scale-95 transition-all ${theme === "dark" ? "bg-green-500 text-neutral-950 shadow-lg shadow-green-500/20" : "border border-neutral-800 text-neutral-500 hover:text-neutral-300"}`}>
+              Sombre
+            </button>
+            <button onClick={() => setTheme("light")} className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold active:scale-95 transition-all ${theme === "light" ? "bg-green-500 text-neutral-950 shadow-lg shadow-green-500/20" : "border border-neutral-800 text-neutral-500 hover:text-neutral-300"}`}>
+              Clair
+            </button>
+          </div>
+        </div>
+
         <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
           <div className="flex items-center gap-2 mb-3">
             <Scale className="h-4 w-4 text-neutral-500" />
