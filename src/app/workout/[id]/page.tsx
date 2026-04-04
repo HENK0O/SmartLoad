@@ -12,7 +12,7 @@ import ProgressBar from "@/components/ProgressBar";
 import Link from "next/link";
 import {
   ArrowLeft, Plus, Check, X, WifiOff, Zap, TrendingUp, Timer, AlertTriangle,
-  ChevronLeft, ChevronRight, Dumbbell, List
+  ChevronLeft, ChevronRight, Dumbbell, List, Trophy
 } from "lucide-react";
 
 interface Exercise { id: string; name: string; muscle_group: string | null; }
@@ -65,6 +65,10 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [defaultRestTime, setDefaultRestTime] = useState(90);
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
   const [showSummary, setShowSummary] = useState(false);
+  const [showExerciseHistory, setShowExerciseHistory] = useState(false);
+  const [exerciseHistory, setExerciseHistory] = useState<{ date: string; weight: number; reps: number; oneRM: number }[]>([]);
+  const [showPR, setShowPR] = useState(false);
+  const [prInfo, setPRInfo] = useState({ exercise: "", oneRM: 0 });
 
   const onlineStatus = useOnlineStatus();
 
@@ -215,6 +219,41 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     else { for (const set of group.sets) await queueSync({ table: "workout_sets", operation: "update", payload: { reps: option.reps, weight: option.weight }, where: { id: set.id } }); setPendingSyncs((p) => p + group.sets.length); }
     setGroups(groups.map((g) => g.exercise.id === exerciseId ? { ...g, sets: g.sets.map((s) => ({ ...s, reps: option.reps, weight: option.weight })) } : g));
     setAppliedProgression((prev) => ({ ...prev, [exerciseId]: type }));
+  }
+
+  async function checkForPR(exerciseId: string, exerciseName: string) {
+    const group = groups.find((g) => g.exercise.id === exerciseId);
+    if (!group) return;
+    const bestSet = group.sets.filter((s) => s.completed).reduce((best, s) => {
+      const oneRM = estimate1RM(s.weight, s.reps);
+      return oneRM > best ? oneRM : best;
+    }, 0);
+    if (bestSet > 0 && smartProgression[exerciseId]) {
+      const currentBest = smartProgression[exerciseId].analysis.bestSession1RM;
+      if (bestSet > currentBest) {
+        setPRInfo({ exercise: exerciseName, oneRM: Math.round(bestSet * 10) / 10 });
+        setShowPR(true);
+        setTimeout(() => setShowPR(false), 4000);
+      }
+    }
+  }
+
+  async function loadExerciseHistory(exerciseId: string) {
+    const { data: workouts } = await supabase.from("workouts").select("id, started_at").eq("user_id", user!.id).eq("status", "completed").order("started_at", { ascending: false }).limit(20);
+    if (!workouts) { setExerciseHistory([]); return; }
+    const history: { date: string; weight: number; reps: number; oneRM: number }[] = [];
+    for (const w of workouts) {
+      const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed").eq("workout_id", w.id);
+      if (sets) {
+        const exSets = sets.filter((s) => s.exercise_id === exerciseId && s.completed);
+        if (exSets.length > 0) {
+          const best = exSets.reduce((b, s) => { const rm = estimate1RM(s.weight, s.reps); return rm > b.oneRM ? { date: w.started_at, weight: s.weight, reps: s.reps, oneRM: rm } : b; }, { date: w.started_at, weight: 0, reps: 0, oneRM: 0 });
+          history.push(best);
+        }
+      }
+    }
+    setExerciseHistory(history.slice(0, 10));
+    setShowExerciseHistory(true);
   }
 
   async function addSet(exerciseId: string) {
@@ -412,17 +451,24 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Exercise content */}
-      <div className={`flex-1 px-4 py-4 ${slideDirection === "left" ? "opacity-0 translate-x-8" : slideDirection === "right" ? "opacity-0 -translate-x-8" : "opacity-100 translate-x-0"}`}
-        style={{ transition: slideDirection ? "all 0.2s ease-out" : "none" }}
+      <div className={`flex-1 px-4 py-4 ${slideDirection === "left" ? "opacity-0 translate-x-8" : slideDirection === "right" ? "opacity-0 -translate-x-8" : ""}`}
+        style={slideDirection ? { transition: "all 0.2s ease-out" } : {}}
       >
         {currentGroup && (
           <>
             {/* Exercise header */}
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white mb-1">{currentGroup.exercise.name}</h1>
-              {currentGroup.exercise.muscle_group && (
-                <p className="text-sm" style={{ color: "hsl(220 15% 40%)" }}>{currentGroup.exercise.muscle_group}</p>
-              )}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-white mb-1">{currentGroup.exercise.name}</h1>
+                  {currentGroup.exercise.muscle_group && (
+                    <p className="text-sm" style={{ color: "hsl(220 15% 40%)" }}>{currentGroup.exercise.muscle_group}</p>
+                  )}
+                </div>
+                <button onClick={() => loadExerciseHistory(currentGroup.exercise.id)} className="p-2 rounded-xl active:scale-95 transition-all" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }}>
+                  <TrendingUp className="h-4 w-4" style={{ color: "hsl(220 15% 50%)" }} />
+                </button>
+              </div>
             </div>
 
             {/* Smart progression */}
@@ -517,7 +563,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                       <input type="text" inputMode="numeric" value={getDisplayValue(set, "reps")} onChange={(e) => handleSetInput(set.id, "reps", e.target.value)} onBlur={() => handleSetBlur(set.id, "reps")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-white focus:outline-none transition-all" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }} />
                     </div>
                   </div>
-                  <button onClick={() => { updateSet(set.id, "completed", !set.completed); if (!set.completed && set.rest_sec > 0) openCustomTimer(currentGroup.exercise.id, set.rest_sec); }} className={`w-12 h-12 rounded-xl flex items-center justify-center active:scale-95 transition-all ${set.completed ? "text-white" : "border border-neutral-800 text-white/40"}`}
+                  <button onClick={() => { updateSet(set.id, "completed", !set.completed); if (!set.completed && set.rest_sec > 0) openCustomTimer(currentGroup.exercise.id, set.rest_sec); if (!set.completed) checkForPR(currentGroup.exercise.id, currentGroup.exercise.name); }} className={`w-12 h-12 rounded-xl flex items-center justify-center active:scale-95 transition-all ${set.completed ? "text-white" : "border border-neutral-800 text-white/40"}`}
                     style={set.completed ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)" } : {}}
                   >
                     <Check className="h-5 w-5" />
@@ -563,6 +609,49 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       <Confetti active={showConfetti} />
+
+      {/* PR Notification */}
+      {showPR && (
+        <div className="fixed top-16 left-4 right-4 z-50 animate-slide-down">
+          <div className="rounded-2xl p-4 flex items-center gap-3" style={{ backgroundColor: "hsl(45 93% 47% / 0.15)", border: "1px solid hsl(45 93% 47% / 0.3)", boxShadow: "0 8px 32px hsl(45 93% 47% / 0.2)" }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "hsl(45 93% 47% / 0.2)" }}>
+              <Trophy className="h-5 w-5" style={{ color: "hsl(45 93% 47%)" }} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>Nouveau record personnel !</p>
+              <p className="text-xs" style={{ color: "hsl(45 93% 47% / 0.7)" }}>{prInfo.exercise} — {prInfo.oneRM} kg (1RM)</p>
+            </div>
+            <button onClick={() => setShowPR(false)} className="p-1 rounded-lg" style={{ color: "hsl(45 93% 47% / 0.5)" }}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Exercise History Popup */}
+      {showExerciseHistory && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(220 15% 6% / 0.7)", backdropFilter: "blur(8px)" }}>
+          <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)", boxShadow: "0 24px 48px hsl(0 0% 0% / 0.4)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-white">Historique — {currentGroup?.exercise.name}</h3>
+              <button onClick={() => setShowExerciseHistory(false)} className="text-xs active:scale-95 transition-all" style={{ color: "hsl(220 15% 45%)" }}>Fermer</button>
+            </div>
+            {exerciseHistory.length === 0 ? (
+              <p className="text-sm text-center py-8" style={{ color: "hsl(220 15% 40%)" }}>Pas d'historique pour cet exercice.</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {exerciseHistory.map((h, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: "hsl(220 15% 11%)" }}>
+                    <span className="text-xs" style={{ color: "hsl(220 15% 40%)" }}>{new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</span>
+                    <span className="text-xs font-semibold text-white">{h.reps} × {h.weight} kg</span>
+                    <span className="text-xs font-bold" style={{ color: "hsl(142 71% 45%)" }}>{h.oneRM} kg</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Post-workout summary */}
       {showSummary && (
