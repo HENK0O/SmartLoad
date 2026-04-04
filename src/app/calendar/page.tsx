@@ -99,7 +99,7 @@ export default function CalendarPage() {
           const today = isToday(day);
           const selected = selectedDate === key;
           return (
-            <button key={key} onClick={() => selectDay(day)} className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-sm transition-all active:scale-95 ${selected ? "bg-green-500 text-neutral-950 font-bold" : today ? "border border-green-500/50 text-green-500" : hasWorkout ? "bg-green-500/10 text-green-500 font-semibold" : "text-neutral-400 hover:bg-neutral-900"}`}>
+            <button key={key} onClick={() => selectDay(day)} className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-sm transition-all active:scale-95 ${selected ? "bg-green-500 text-neutral-950 font-bold" : today ? "border-2 border-green-500 text-green-500" : hasWorkout ? "border-2 border-green-500/40 bg-green-500/10 text-green-500 font-semibold" : "text-neutral-400 hover:bg-neutral-900 border border-transparent"}`}>
               {day}
               {hasWorkout && !selected && <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-green-500" />}
             </button>

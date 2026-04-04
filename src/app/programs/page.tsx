@@ -3,10 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/lib/context";
+import { LangFlag } from "@/components/LangFlag";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ListSkeleton } from "@/components/Skeleton";
+import { t } from "@/lib/i18n";
 import {
   Plus,
   Pencil,
@@ -47,10 +50,11 @@ interface Workout {
 
 type Tab = "programs" | "templates" | "history";
 
-const MAX_PROGRAMS = 2;
+const MAX_PROGRAMS = Infinity;
 
 export default function ProgramsPage() {
   const { user, loading } = useAuth();
+  const { lang, setLang } = useApp();
   const router = useRouter();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loadingPrograms, setLoadingPrograms] = useState(true);
@@ -152,22 +156,22 @@ export default function ProgramsPage() {
       .insert({
         user_id: user!.id,
         name: templateName.trim(),
-        description: `Basé sur "${program?.name}"`,
+        description: `${lang === "en" ? "Based on" : "Basé sur"} "${program?.name}"`,
       })
       .select()
       .single();
     if (templateError) {
       if (templateError.code === "42P01")
         setError(
-          "La fonctionnalité templates n'est pas encore activée. Exécutez la migration SQL 002 dans Supabase."
+          `${t("programs_error_template_migration", lang)} ${lang === "en" ? "Run SQL migration 002 in Supabase." : "Exécutez la migration SQL 002 dans Supabase."}`
         );
-      else setError(`Erreur: ${templateError.message}`);
+      else setError(`${t("programs_error", lang)}: ${templateError.message}`);
       setSaveTemplateConfirm(null);
       setTemplateName("");
       return;
     }
     if (!template) {
-      setError("Impossible de créer le template.");
+      setError(t("programs_error_template", lang));
       setSaveTemplateConfirm(null);
       setTemplateName("");
       return;
@@ -199,7 +203,7 @@ export default function ProgramsPage() {
 
   async function createProgramFromTemplate(templateId: string) {
     if (programs.length >= MAX_PROGRAMS) {
-      setError(`Limite du plan Free : ${MAX_PROGRAMS} programmes maximum.`);
+      setError(t("programs_unlimited_msg", lang));
       return;
     }
     const { data: template } = await supabase
@@ -248,7 +252,7 @@ export default function ProgramsPage() {
   async function createProgram() {
     if (!newName.trim() || !user) return;
     if (programs.length >= MAX_PROGRAMS) {
-      setError(`Limite du plan Free : ${MAX_PROGRAMS} programmes maximum.`);
+      setError(t("programs_unlimited_msg", lang));
       return;
     }
     const { data, error: err } = await supabase
@@ -257,7 +261,7 @@ export default function ProgramsPage() {
       .select()
       .single();
     if (err) {
-      setError("Erreur lors de la création du programme");
+      setError(t("programs_error_create", lang));
       return;
     }
     if (data) {
@@ -269,7 +273,7 @@ export default function ProgramsPage() {
 
   async function confirmDeleteProgram(id: string) {
     const { error: err } = await supabase.from("programs").delete().eq("id", id);
-    if (err) setError("Erreur lors de la suppression");
+    if (err) setError(t("programs_error_delete", lang));
     else setPrograms(programs.filter((p) => p.id !== id));
     setDeleteConfirm(null);
   }
@@ -283,7 +287,7 @@ export default function ProgramsPage() {
       .select()
       .single();
     if (err) {
-      setError("Erreur lors du renommage");
+      setError(t("programs_error_rename", lang));
       return;
     }
     if (data) {
@@ -294,7 +298,7 @@ export default function ProgramsPage() {
   }
 
   function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString("fr-FR", {
+    return new Date(dateStr).toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
       day: "numeric",
       month: "short",
       hour: "2-digit",
@@ -307,22 +311,31 @@ export default function ProgramsPage() {
       <main className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" />
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">Chargement...</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("programs_loading", lang)}</p>
         </div>
       </main>
     );
 
   const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
-    { key: "programs", label: "Programmes", icon: LayoutGrid },
-    { key: "templates", label: "Templates", icon: Copy },
-    { key: "history", label: "Historique", icon: History },
+    { key: "programs", label: t("programs_tab_programs", lang), icon: LayoutGrid },
+    { key: "templates", label: t("programs_tab_templates", lang), icon: Copy },
+    { key: "history", label: t("programs_tab_history", lang), icon: History },
   ];
 
   return (
-    <main className="flex min-h-screen flex-col px-4 py-5 pb-28 animate-fade-in max-w-2xl mx-auto w-full">
+    <main className="flex min-h-screen flex-col px-4 py-5 pb-28 animate-fade-in max-w-2xl mx-auto w-full relative">
+      {/* Language switcher - top right */}
+      <button
+        onClick={() => setLang(lang === "fr" ? "en" : "fr")}
+        className="absolute top-0 right-0 z-30 p-2 rounded-xl active:scale-95 transition-all md:right-0 md:top-1"
+        style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)" }}
+      >
+        <LangFlag lang={lang} size={20} />
+      </button>
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pr-12 md:pr-0">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{
@@ -337,21 +350,23 @@ export default function ProgramsPage() {
               SmartLoad
             </h1>
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              {programs.length}/{MAX_PROGRAMS} programmes
+              {programs.length} {lang === "en" ? (programs.length !== 1 ? "programs" : "program") : (programs.length > 1 ? "programmes" : "programme")}
             </p>
           </div>
         </div>
-        <Link
-          href="/workout"
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
-          style={{
-            background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
-            boxShadow: "0 4px 16px hsl(var(--primary-glow))",
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Séance
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/workout"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
+            style={{
+              background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
+              boxShadow: "0 4px 16px hsl(var(--primary-glow))",
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            {t("programs_session", lang)}
+          </Link>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -421,10 +436,10 @@ export default function ProgramsPage() {
                     <Dumbbell className="h-7 w-7 text-[hsl(var(--primary))]" />
                   </div>
                   <p className="text-[hsl(var(--muted-foreground))] mb-1">
-                    Aucun programme
+                    {t("programs_none", lang)}
                   </p>
                   <p className="text-xs text-[hsl(var(--muted-foreground))] opacity-60">
-                    Crée ton premier programme pour commencer !
+                    {t("programs_empty_desc", lang)}
                   </p>
                 </div>
               )}
@@ -486,7 +501,7 @@ export default function ProgramsPage() {
                             {p.name}
                           </p>
                           <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                            {new Date(p.created_at).toLocaleDateString("fr-FR", {
+                            {new Date(p.created_at).toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", {
                               day: "numeric",
                               month: "short",
                             })}
@@ -539,12 +554,12 @@ export default function ProgramsPage() {
                   <div className="flex items-center gap-2 mb-4">
                     <Sparkles className="h-5 w-5 text-[hsl(var(--primary))]" />
                     <h3 className="font-semibold text-[hsl(var(--foreground))]">
-                      Nouveau programme
+                      {t("programs_new", lang)}
                     </h3>
                   </div>
                   <input
                     type="text"
-                    placeholder="Nom du programme"
+                    placeholder={t("programs_new_placeholder", lang)}
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     className="w-full rounded-xl border px-4 py-3.5 text-sm bg-[hsl(var(--input))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))/50] transition-all mb-4"
@@ -569,7 +584,7 @@ export default function ProgramsPage() {
                         boxShadow: "0 4px 16px hsl(var(--primary-glow))",
                       }}
                     >
-                      Créer
+                      {t("programs_create", lang)}
                     </button>
                     <button
                       onClick={() => {
@@ -579,7 +594,7 @@ export default function ProgramsPage() {
                       className="rounded-xl border px-6 py-3.5 text-sm font-semibold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] active:scale-95 transition-all"
                       style={{ borderColor: "hsl(var(--border))" }}
                     >
-                      Annuler
+                      {t("programs_cancel", lang)}
                     </button>
                   </div>
                 </div>
@@ -593,7 +608,7 @@ export default function ProgramsPage() {
                   }}
                 >
                   <Plus className="h-5 w-5 inline mr-1.5 -mt-0.5" />
-                  Nouveau programme
+                  {t("programs_new", lang)}
                 </button>
               ) : (
                 <div
@@ -604,7 +619,7 @@ export default function ProgramsPage() {
                   }}
                 >
                   <p className="text-xs text-[hsl(var(--primary))] font-medium">
-                    Limite de {MAX_PROGRAMS} programmes atteinte (plan Free)
+                    {t("programs_unlimited_msg", lang)}
                   </p>
                 </div>
               )}
@@ -632,17 +647,17 @@ export default function ProgramsPage() {
                     <Copy className="h-7 w-7 text-[hsl(var(--primary))]" />
                   </div>
                   <p className="text-[hsl(var(--muted-foreground))] mb-1">
-                    Aucun template
+                    {t("programs_no_templates", lang)}
                   </p>
                   <p className="text-xs text-[hsl(var(--muted-foreground))] opacity-60">
-                    Sauvegarde un programme existant comme template !
+                    {t("programs_no_templates_desc", lang)}
                   </p>
                 </div>
               )}
 
-              {templates.map((t, i) => (
+              {templates.map((tmpl, i) => (
                 <div
-                  key={t.id}
+                  key={tmpl.id}
                   className="rounded-2xl border p-4 animate-slide-up"
                   style={{
                     backgroundColor: "hsl(var(--card))",
@@ -662,21 +677,21 @@ export default function ProgramsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-[hsl(var(--foreground))] truncate">
-                        {t.name}
+                        {tmpl.name}
                       </p>
                       <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                        {t.exercise_count} exercice{t.exercise_count > 1 ? "s" : ""}
-                        {t.description && (
+                        {tmpl.exercise_count} {tmpl.exercise_count > 1 ? t("programs_exercises", lang) : t("programs_exercise", lang)}
+                        {tmpl.description && (
                           <span className="text-[hsl(var(--muted))]">
                             {" "}
-                            · {t.description}
+                            · {tmpl.description}
                           </span>
                         )}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
-                        onClick={() => createProgramFromTemplate(t.id)}
+                        onClick={() => createProgramFromTemplate(tmpl.id)}
                         className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-white active:scale-95 transition-all"
                         style={{
                           background:
@@ -684,12 +699,12 @@ export default function ProgramsPage() {
                           boxShadow: "0 2px 8px hsl(var(--primary-glow))",
                         }}
                       >
-                        Utiliser
+                        {t("programs_use", lang)}
                         <ArrowRight className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => {
-                          setDeleteConfirm(t.id);
+                          setDeleteConfirm(tmpl.id);
                           setDeleteType("template");
                         }}
                         className="p-2.5 rounded-xl text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))/10] active:scale-95 transition-all"
@@ -722,7 +737,7 @@ export default function ProgramsPage() {
                 <Calendar className="h-7 w-7 text-[hsl(var(--muted-foreground))]" />
               </div>
               <p className="text-[hsl(var(--muted-foreground))]">
-                Aucune séance pour le moment.
+                {t("programs_no_history", lang)}
               </p>
             </div>
           ) : (
@@ -734,7 +749,7 @@ export default function ProgramsPage() {
               > = {};
               for (const s of sets) {
                 const name =
-                  (s.exercises as { name: string })?.name ?? "Exercice";
+                  (s.exercises as { name: string })?.name ?? (lang === "en" ? "Exercise" : "Exercice");
                 if (!summary[name]) summary[name] = { totalSets: 0, details: [] };
                 summary[name].totalSets++;
                 const wt =
@@ -788,7 +803,7 @@ export default function ProgramsPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-[hsl(var(--foreground))] truncate">
-                            {w.programs?.name ?? "Séance libre"}
+                            {w.programs?.name ?? t("programs_free_session", lang)}
                           </p>
                           <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
                             {formatDate(w.started_at)}
@@ -815,10 +830,10 @@ export default function ProgramsPage() {
                         }
                       >
                         {w.status === "completed"
-                          ? "Terminée"
+                          ? t("programs_completed", lang)
                           : w.status === "abandoned"
-                          ? "Annulée"
-                          : "En cours"}
+                          ? t("programs_abandoned", lang)
+                          : t("programs_in_progress", lang)}
                       </span>
                     </div>
 
@@ -832,9 +847,8 @@ export default function ProgramsPage() {
                         style={{ borderTop: "1px solid hsl(var(--border))" }}
                       >
                         <span>
-                          {sets.length} série{sets.length > 1 ? "s" : ""} ·{" "}
-                          {Object.keys(summary).length} exercice
-                          {Object.keys(summary).length > 1 ? "s" : ""}
+                          {sets.length} {sets.length > 1 ? t("programs_series_pl", lang) : t("programs_series", lang)} ·{" "}
+                          {Object.keys(summary).length} {Object.keys(summary).length > 1 ? t("programs_exercises", lang) : t("programs_exercise", lang)}
                         </span>
                         <ChevronRight
                           className={`h-4 w-4 transition-transform duration-200 ${
@@ -880,15 +894,15 @@ export default function ProgramsPage() {
         open={deleteConfirm !== null}
         title={
           deleteType === "program"
-            ? "Supprimer le programme"
-            : "Supprimer le template"
+            ? t("programs_delete_program", lang)
+            : t("programs_delete_template", lang)
         }
         description={
           deleteType === "program"
-            ? "Cette action est irréversible. Toutes les données associées seront perdues."
-            : "Ce template sera supprimé définitivement."
+            ? `${t("programs_delete_desc", lang)} ${lang === "en" ? "All associated data will be lost." : "Toutes les données associées seront perdues."}`
+            : t("programs_delete_template_desc", lang)
         }
-        confirmLabel="Supprimer"
+        confirmLabel={t("programs_delete_confirm", lang)}
         danger
         onConfirm={() => {
           if (!deleteConfirm) return;
@@ -923,17 +937,17 @@ export default function ProgramsPage() {
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="h-5 w-5 text-[hsl(var(--primary))]" />
               <h3 className="text-lg font-bold text-[hsl(var(--foreground))]">
-                Sauvegarder comme template
+                {t("programs_save_template", lang)}
               </h3>
             </div>
             <p className="text-sm text-[hsl(var(--muted-foreground))] mb-5">
-              Nomme ce template pour le réutiliser plus tard.
+              {t("programs_save_template_desc", lang)}
             </p>
             <input
               type="text"
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Nom du template"
+              placeholder={t("programs_template_name", lang)}
               className="w-full rounded-xl border px-4 py-3.5 text-sm bg-[hsl(var(--input))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))/50] transition-all mb-5"
               style={{ borderColor: "hsl(var(--border))" }}
               autoFocus
@@ -955,7 +969,7 @@ export default function ProgramsPage() {
                 className="flex-1 rounded-xl border px-4 py-3.5 text-sm font-semibold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] active:scale-95 transition-all"
                 style={{ borderColor: "hsl(var(--border))" }}
               >
-                Annuler
+                {t("programs_cancel", lang)}
               </button>
               <button
                 onClick={() =>
@@ -969,7 +983,7 @@ export default function ProgramsPage() {
                   boxShadow: "0 4px 16px hsl(var(--primary-glow))",
                 }}
               >
-                Sauvegarder
+                {t("programs_save", lang)}
               </button>
             </div>
           </div>

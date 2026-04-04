@@ -75,9 +75,31 @@
   }
 
   @media (hover: hover) {
-    button:hover { filter: brightness(1.1); }
-    button:active { filter: brightness(1); }
-    a:hover { filter: brightness(1.1); }
+    button {
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.15);
+    }
+    button:active {
+      transform: translateY(0) scale(0.98);
+      filter: brightness(1);
+    }
+    a {
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    a:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.15);
+    }
+    a:active {
+      transform: translateY(0) scale(0.98);
+    }
+    [role="button"]:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.15);
+    }
   }
 
   ::selection {

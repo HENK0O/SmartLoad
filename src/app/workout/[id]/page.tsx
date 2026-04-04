@@ -62,6 +62,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [showAllExercises, setShowAllExercises] = useState(false);
   const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
   const [appliedProgression, setAppliedProgression] = useState<Record<string, string>>({});
+  const [defaultRestTime, setDefaultRestTime] = useState(90);
+  const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
 
   const onlineStatus = useOnlineStatus();
 
@@ -97,8 +99,12 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   }, [timerActive]);
 
   async function loadUnit() {
-    const { data } = await supabase.from("profiles").select("unit").eq("id", user!.id).single();
-    if (data) setUnit(data.unit as "kg" | "lbs");
+    const { data } = await supabase.from("profiles").select("unit, rest_time, timer_sound").eq("id", user!.id).single();
+    if (data) {
+      setUnit(data.unit as "kg" | "lbs");
+      if (data.rest_time) setDefaultRestTime(data.rest_time);
+      if (data.timer_sound !== undefined && data.timer_sound !== null) setTimerSoundEnabled(data.timer_sound);
+    }
   }
 
   function displayWeight(kg: number): string {
@@ -279,6 +285,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   function formatTimer(seconds: number): string { const m = Math.floor(seconds / 60); const s = seconds % 60; return `${m}:${s.toString().padStart(2, "0")}`; }
 
   function playTimerSound() {
+    if (!timerSoundEnabled) return;
     try {
       const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const playBeep = (time: number, freq: number, duration: number) => {
@@ -392,19 +399,13 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           const isDone = exSets.length > 0 && exCompleted === exSets.length;
           const isCurrent = i === currentExerciseIndex;
           return (
-            <button
-              key={g.exercise.id}
-              onClick={() => { setCurrentExerciseIndex(i); setSlideDirection(i > currentExerciseIndex ? "left" : "right"); }}
-              className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all active:scale-95"
-              style={isCurrent
-                ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", color: "white", boxShadow: "0 2px 8px hsl(142 71% 45% / 0.3)" }
-                : isDone
-                  ? { backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }
-                  : { backgroundColor: "hsl(220 15% 11%)", color: "hsl(220 15% 40%)" }
-              }
-            >
-              {isDone ? <Check className="h-3.5 w-3.5" /> : i + 1}
-            </button>
+                  <button
+                    onClick={() => setCustomAndStart(currentGroup.exercise.id, defaultRestTime)}
+                    className="w-full rounded-xl py-3 text-sm active:scale-95 transition-all"
+                    style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 45%)" }}
+                  >
+                    Repos par défaut ({defaultRestTime >= 60 ? `${Math.floor(defaultRestTime / 60)}:${(defaultRestTime % 60).toString().padStart(2, "0")}` : `${defaultRestTime}s`})
+                  </button>
           );
         })}
       </div>
@@ -484,9 +485,10 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                   <div className="grid grid-cols-4 gap-2 mb-3">
                     {[30, 60, 90, 120, 150, 180, 240, 300].map((sec) => (
-                      <button key={sec} onClick={() => setCustomAndStart(currentGroup.exercise.id, sec)} className="rounded-xl py-3 text-center font-mono text-sm font-semibold active:scale-[0.95] transition-all" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 75%)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)"; e.currentTarget.style.color = "hsl(142 71% 45%)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "hsl(220 15% 16%)"; e.currentTarget.style.color = "hsl(220 15% 75%)"; }}
+                      <button key={sec} onClick={() => setCustomAndStart(currentGroup.exercise.id, sec)} className="rounded-xl py-3 text-center font-mono text-sm font-semibold active:scale-[0.95] transition-all"
+                        style={defaultRestTime === sec ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)", color: "white" } : { backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 75%)" }}
+                        onMouseEnter={(e) => { if (defaultRestTime !== sec) { e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)"; e.currentTarget.style.color = "hsl(142 71% 45%)"; } }}
+                        onMouseLeave={(e) => { if (defaultRestTime !== sec) { e.currentTarget.style.borderColor = "hsl(220 15% 16%)"; e.currentTarget.style.color = "hsl(220 15% 75%)"; } }}
                       >
                         {sec >= 60 ? `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, "0")}` : `${sec}s`}
                       </button>
@@ -536,7 +538,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Bottom bar */}
       {!isReadOnly && (
-        <div className="fixed bottom-0 left-0 right-0 p-4" style={{ backgroundColor: "hsl(220 15% 9% / 0.95)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: "1px solid hsl(220 15% 14%)" }}>
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4 pb-6" style={{ backgroundColor: "hsl(220 15% 9% / 0.98)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: "1px solid hsl(220 15% 14%)" }}>
           <div className="flex items-center gap-3 mb-3">
             <button onClick={() => navigateExercise("prev")} disabled={currentExerciseIndex === 0} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }}>
               <ChevronLeft className="h-5 w-5 text-white" />

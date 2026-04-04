@@ -2,25 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutGrid,
-  Dumbbell,
-  Calendar,
-  BarChart3,
-  Settings,
-} from "lucide-react";
+import { LayoutGrid, Dumbbell, Calendar, BarChart3, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
+import { useApp } from "@/lib/context";
 
 const navItems = [
-  { label: "Programs", href: "/programs", icon: LayoutGrid },
-  { label: "Workout", href: "/workout", icon: Dumbbell },
-  { label: "Calendar", href: "/calendar", icon: Calendar },
-  { label: "Analytics", href: "/analytics", icon: BarChart3 },
-  { label: "Settings", href: "/settings", icon: Settings },
+  { labelKey: "nav_programs", href: "/programs", icon: LayoutGrid },
+  { labelKey: "nav_workout", href: "/workout", icon: Dumbbell },
+  { labelKey: "nav_calendar", href: "/calendar", icon: Calendar },
+  { labelKey: "nav_analytics", href: "/analytics", icon: BarChart3 },
+  { labelKey: "nav_settings", href: "/settings", icon: Settings },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const { lang } = useApp();
+
+  if (pathname && /^\/workout\/[^/]+$/.test(pathname)) return null;
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -38,7 +37,7 @@ export default function BottomNav() {
       }}
     >
       <div className="flex items-center justify-around max-w-lg mx-auto px-2 pt-2 pb-6">
-        {navItems.map(({ label, href, icon: Icon }) => {
+        {navItems.map(({ labelKey, href, icon: Icon }) => {
           const active = isActive(href);
           const activeColor = "hsl(142 71% 45%)";
           const inactiveColor = "hsl(220 15% 50%)";
@@ -65,7 +64,7 @@ export default function BottomNav() {
                   active ? "text-green-400" : "text-white/40"
                 )}
               >
-                {label}
+                {t(labelKey, lang)}
               </span>
             </Link>
           );

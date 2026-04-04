@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/lib/context";
+import { t } from "@/lib/i18n";
 import { ArrowRight, Dumbbell, TrendingUp, Clock, Shield, ChevronDown } from "lucide-react";
+import { LangFlag } from "@/components/LangFlag";
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const { lang, setLang } = useApp();
   const router = useRouter();
   const [showMore, setShowMore] = useState(false);
 
@@ -18,15 +22,31 @@ export default function Home() {
   if (loading) return <p className="p-6">Chargement...</p>;
   if (user) return null;
 
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return t("home_greeting_morning", lang);
+    if (h < 18) return t("home_greeting_afternoon", lang);
+    return t("home_greeting_evening", lang);
+  };
+
   const features = [
-    { icon: TrendingUp, title: "Surcharge progressive", desc: "L'app calcule automatiquement ta prochaine charge idéale." },
-    { icon: Dumbbell, title: "Programmes personnalisés", desc: "Crée tes programmes ou utilise des templates." },
-    { icon: Clock, title: "Suivi en temps réel", desc: "Chrono de repos, stats live, historique complet." },
-    { icon: Shield, title: "Mode hors-ligne", desc: "Entraîne-toi même sans connexion." },
+    { icon: TrendingUp, title: t("home_greeting_morning", lang) === "Good morning" ? "Progressive Overload" : "Surcharge progressive", desc: lang === "en" ? "The app auto-calculates your next ideal load." : "L'app calcule automatiquement ta prochaine charge idéale." },
+    { icon: Dumbbell, title: lang === "en" ? "Custom Programs" : "Programmes personnalisés", desc: lang === "en" ? "Create programs or use templates." : "Crée tes programmes ou utilise des templates." },
+    { icon: Clock, title: lang === "en" ? "Real-time Tracking" : "Suivi en temps réel", desc: lang === "en" ? "Rest timer, live stats, full history." : "Chrono de repos, stats live, historique complet." },
+    { icon: Shield, title: lang === "en" ? "Offline Mode" : "Mode hors-ligne", desc: lang === "en" ? "Train even without connection." : "Entraîne-toi même sans connexion." },
   ];
 
   return (
     <main className="flex min-h-screen flex-col relative overflow-hidden">
+      {/* Language switcher - top right */}
+      <button
+        onClick={() => setLang(lang === "fr" ? "en" : "fr")}
+        className="absolute top-4 right-4 z-20 p-2.5 rounded-xl active:scale-95 transition-all"
+        style={{ backgroundColor: "hsl(220 15% 9% / 0.8)", border: "1px solid hsl(220 15% 14%)", backdropFilter: "blur(12px)" }}
+      >
+        <LangFlag lang={lang} size={20} />
+      </button>
+
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
@@ -46,7 +66,6 @@ export default function Home() {
       {/* Hero */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-8">
         <div className="text-center max-w-sm mx-auto">
-          {/* Logo */}
           <div className="animate-scale-in mb-8">
             <div
               className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-float"
@@ -66,11 +85,10 @@ export default function Home() {
               Smart<span style={{ color: "hsl(142 71% 45%)" }}>Load</span>
             </h1>
             <p className="text-lg text-white/50">
-              Entraîne-toi plus intelligemment.
+              {lang === "en" ? "Train smarter." : "Entraîne-toi plus intelligemment."}
             </p>
           </div>
 
-          {/* CTA */}
           <div className="animate-slide-up stagger-2">
             <Link
               href="/login"
@@ -80,7 +98,7 @@ export default function Home() {
                 boxShadow: "0 8px 32px hsl(142 71% 45% / 0.35)",
               }}
             >
-              Commencer gratuitement
+              {t("home_cta", lang)}
               <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
@@ -94,7 +112,7 @@ export default function Home() {
           className="w-full flex items-center justify-center gap-2 py-3 text-sm font-medium mb-4 active:scale-95 transition-all"
           style={{ color: "hsl(220 15% 45%)" }}
         >
-          {showMore ? "Masquer" : "Découvrir les fonctionnalités"}
+          {showMore ? t("home_hide", lang) : t("home_features", lang)}
           <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} />
         </button>
 
