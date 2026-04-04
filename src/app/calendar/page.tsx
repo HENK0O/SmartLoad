@@ -1,0 +1,149 @@
+"use client";
+
+import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, CalendarDays, Dumbbell, ArrowRight } from "lucide-react";
+
+interface CalendarWorkout {
+  id: string; program_name: string | null; status: string; started_at: string;
+  exercises: { name: string; sets: { reps: number; weight: number; completed: boolean }[] }[];
+}
+
+const MONTHS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+const DAYS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+export default function CalendarPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [workoutsByDate, setWorkoutsByDate] = useState<Record<string, CalendarWorkout[]>>({});
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedWorkouts, setSelectedWorkouts] = useState<CalendarWorkout[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [unit, setUnit] = useState<"kg" | "lbs">("kg");
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
+  useEffect(() => { if (!user) return; loadWorkouts(); loadUnit(); }, [user, currentDate.getFullYear(), currentDate.getMonth()]);
+
+  async function loadUnit() { const { data } = await supabase.from("profiles").select("unit").eq("id", user!.id).single(); if (data) setUnit(data.unit as "kg" | "lbs"); }
+  function displayWeight(kg: number): string { if (unit === "lbs") return Math.round(kg * 2.20462 * 10) / 10 + " lbs"; return kg + " kg"; }
+
+  async function loadWorkouts() {
+    setLoadingData(true);
+    const year = currentDate.getFullYear(), month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1), lastDay = new Date(year, month + 1, 0);
+    const { data: workouts } = await supabase.from("workouts").select("id, program_id, status, started_at, programs(name)").eq("user_id", user!.id).gte("started_at", firstDay.toISOString()).lt("started_at", new Date(lastDay.getTime() + 86400000).toISOString()).order("started_at", { ascending: true });
+    const byDate: Record<string, CalendarWorkout[]> = {};
+    if (workouts) {
+      for (const w of workouts) {
+        const dateKey = new Date(w.started_at).toLocaleDateString("fr-FR");
+        if (!byDate[dateKey]) byDate[dateKey] = [];
+        const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed, exercises(name)").eq("workout_id", w.id).order("set_number");
+        const exerciseMap: Record<string, { name: string; sets: { reps: number; weight: number; completed: boolean }[] }> = {};
+        if (sets) { for (const s of sets) { const exId = s.exercise_id; if (!exerciseMap[exId]) exerciseMap[exId] = { name: (s.exercises as unknown as { name: string })?.name ?? "Exercice", sets: [] }; exerciseMap[exId].sets.push({ reps: s.reps, weight: s.weight, completed: s.completed }); } }
+        byDate[dateKey].push({ id: w.id, program_name: (w.programs as unknown as { name: string } | null)?.name ?? "Séance libre", status: w.status, started_at: w.started_at, exercises: Object.values(exerciseMap) });
+      }
+    }
+    setWorkoutsByDate(byDate);
+    setLoadingData(false);
+  }
+
+  function getDaysInMonth(date: Date): (number | null)[] {
+    const year = date.getFullYear(), month = date.getMonth();
+    const firstDay = new Date(year, month, 1), lastDay = new Date(year, month + 1, 0);
+    let startDay = firstDay.getDay() - 1; if (startDay < 0) startDay = 6;
+    const days: (number | null)[] = [];
+    for (let i = 0; i < startDay; i++) days.push(null);
+    for (let i = 1; i <= lastDay.getDate(); i++) days.push(i);
+    return days;
+  }
+
+  function dateKey(day: number): string { return new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toLocaleDateString("fr-FR"); }
+  function isToday(day: number): boolean { const t = new Date(); return day === t.getDate() && currentDate.getMonth() === t.getMonth() && currentDate.getFullYear() === t.getFullYear(); }
+  function prevMonth() { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)); }
+  function nextMonth() { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)); }
+
+  function selectDay(day: number) {
+    const key = dateKey(day);
+    setSelectedDate(key);
+    setSelectedWorkouts(workoutsByDate[key] || []);
+    setTimeout(() => { detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
+  }
+
+  if (loading || !user) return <p className="p-6">Chargement...</p>;
+  const days = getDaysInMonth(currentDate);
+
+  return (
+    <main className="flex min-h-screen flex-col p-5 pb-24">
+      <h1 className="text-2xl font-bold tracking-tight mb-6">Calendrier</h1>
+
+      <div className="flex items-center justify-between mb-5">
+        <button onClick={prevMonth} className="p-2 rounded-xl hover:bg-neutral-900 active:scale-95 transition-all text-neutral-400"><ChevronLeft className="h-5 w-5" /></button>
+        <h2 className="text-base font-semibold">{MONTHS_FR[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+        <button onClick={nextMonth} className="p-2 rounded-xl hover:bg-neutral-900 active:scale-95 transition-all text-neutral-400"><ChevronRight className="h-5 w-5" /></button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {DAYS_FR.map((d) => <div key={d} className="text-center text-[10px] text-neutral-600 font-medium py-2">{d}</div>)}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-6">
+        {days.map((day, i) => {
+          if (day === null) return <div key={`empty-${i}`} />;
+          const key = dateKey(day);
+          const hasWorkout = workoutsByDate[key] && workoutsByDate[key].length > 0;
+          const today = isToday(day);
+          const selected = selectedDate === key;
+          return (
+            <button key={key} onClick={() => selectDay(day)} className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-sm transition-all active:scale-95 ${selected ? "bg-green-500 text-neutral-950 font-bold" : today ? "border border-green-500/50 text-green-500" : hasWorkout ? "bg-green-500/10 text-green-500 font-semibold" : "text-neutral-400 hover:bg-neutral-900"}`}>
+              {day}
+              {hasWorkout && !selected && <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-green-500" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedDate && (
+        <div ref={detailRef} className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays className="h-4 w-4 text-neutral-500" />
+            <h3 className="font-semibold text-sm">{selectedDate}</h3>
+          </div>
+
+          {selectedWorkouts.length === 0 ? (
+            <p className="text-sm text-neutral-500">Aucune séance ce jour-là.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {selectedWorkouts.map((w) => (
+                <div key={w.id} className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <Link href={`/workout/${w.id}`} className="font-semibold text-sm text-green-500 hover:underline flex items-center gap-1">
+                      {w.program_name}
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${w.status === "completed" ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+                      {w.status === "completed" ? "Terminée" : "Annulée"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {w.exercises.map((ex, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <Dumbbell className="h-3 w-3 text-neutral-600 shrink-0" />
+                        <span className="text-neutral-400">{ex.name}</span>
+                        <span className="text-green-500/80 ml-auto font-mono">{ex.sets.map((s) => `${s.reps}×${displayWeight(s.weight)}`).join(" · ")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </main>
+  );
+}
