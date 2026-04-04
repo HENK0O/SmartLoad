@@ -17,14 +17,16 @@ export default function Home() {
   if (user) return null;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 p-6">
-      <h1 className="text-4xl font-bold tracking-tight">
-        <span className="text-[var(--primary)]">Smart</span>Load
-      </h1>
-      <p className="text-[var(--muted)] text-center text-lg max-w-sm">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-8 p-6 animate-fade-in">
+      <div className="animate-scale-in">
+        <h1 className="text-4xl font-bold tracking-tight">
+          <span className="text-[var(--primary)]">Smart</span>Load
+        </h1>
+      </div>
+      <p className="text-[var(--muted)] text-center text-lg max-w-sm animate-slide-up">
         Suivez vos entraînements et progressez automatiquement avec la surcharge progressive.
       </p>
-      <div className="flex flex-col gap-3 w-full max-w-xs">
+      <div className="flex flex-col gap-3 w-full max-w-xs animate-slide-up [animation-delay:0.15s]">
         <Link
           href="/login"
           className="block w-full rounded-lg bg-[var(--primary)] px-6 py-3 text-center font-semibold text-[var(--primary-foreground)] hover:opacity-90 transition-opacity"

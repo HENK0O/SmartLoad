@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
+import type { ExerciseDef } from "@/lib/exercises";
 import Link from "next/link";
-import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Dumbbell, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Dumbbell } from "lucide-react";
 
 interface Exercise { id: string; name: string; muscle_group: string | null; }
 interface ProgramExercise {
@@ -20,10 +22,10 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   const [programId, setProgramId] = useState("");
   const [programName, setProgramName] = useState("");
   const [programExercises, setProgramExercises] = useState<ProgramExercise[]>([]);
-  const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [selectedExercise, setSelectedExercise] = useState("");
+  const [selectedBase, setSelectedBase] = useState<ExerciseDef | null>(null);
+  const [showSupportPopup, setShowSupportPopup] = useState(false);
   const [deleteExerciseConfirm, setDeleteExerciseConfirm] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSets, setEditSets] = useState(4);
@@ -38,27 +40,39 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   async function loadData() {
     const { data: program } = await supabase.from("programs").select("name").eq("id", programId).single();
     if (program) setProgramName(program.name);
-    const { data: exercises } = await supabase.from("exercises").select("id, name, muscle_group").order("name");
-    if (exercises) setAllExercises(exercises);
     const { data: pe, error } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order");
     if (pe) { const mapped = (pe as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.rep_range_min || p.target_reps, rep_range_max: p.rep_range_max || p.target_reps + 4 })); setProgramExercises(mapped); }
     else if (error && error.code === "42703") { const { data: fallback } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order"); if (fallback) { const mapped = (fallback as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.target_reps, rep_range_max: p.target_reps + 4 })); setProgramExercises(mapped); } }
     setLoadingData(false);
   }
 
-  async function addExercise() {
-    if (!selectedExercise) return;
-    const ex = allExercises.find((e) => e.id === selectedExercise);
-    if (!ex) return;
+  async function getOrCreateExercise(name: string, muscleGroup: string): Promise<string> {
+    const { data: existing } = await supabase.from("exercises").select("id").eq("name", name).single();
+    if (existing) return existing.id;
+    const { data: created } = await supabase.from("exercises").insert({ name, muscle_group: muscleGroup }).select().single();
+    if (created) return created.id;
+    throw new Error(`Impossible de créer l'exercice: ${name}`);
+  }
+
+  async function addExercise(support: string) {
+    if (!selectedBase) return;
+    const fullName = getFullName(selectedBase.baseName, support);
+    const exerciseId = await getOrCreateExercise(fullName, selectedBase.muscleGroup);
     const order = programExercises.length;
-    const insertData: Record<string, unknown> = { program_id: programId, exercise_id: selectedExercise, target_sets: 4, target_reps: 8, target_weight: 0, rep_range_min: 8, rep_range_max: 12, sort_order: order };
+    const insertData: Record<string, unknown> = { program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: 0, rep_range_min: 8, rep_range_max: 12, sort_order: order };
     const { data, error } = await supabase.from("program_exercises").insert(insertData).select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order").single();
     if (error && error.code === "42703") {
-      const { data: fallbackData } = await supabase.from("program_exercises").insert({ program_id: programId, exercise_id: selectedExercise, target_sets: 4, target_reps: 8, target_weight: 0, sort_order: order }).select("id, exercise_id, target_sets, target_reps, target_weight, sort_order").single();
-      if (fallbackData) { setProgramExercises([...programExercises, { ...fallbackData, exercises: ex, rep_range_min: 8, rep_range_max: 12 } as ProgramExercise]); setSelectedExercise(""); setShowAdd(false); }
+      const { data: fallbackData } = await supabase.from("program_exercises").insert({ program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: 0, sort_order: order }).select("id, exercise_id, target_sets, target_reps, target_weight, sort_order").single();
+      if (fallbackData) {
+        setProgramExercises([...programExercises, { ...fallbackData, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: 8, rep_range_max: 12 } as ProgramExercise]);
+        setSelectedBase(null); setShowSupportPopup(false); setShowAdd(false);
+      }
       return;
     }
-    if (data) { setProgramExercises([...programExercises, { ...data, exercises: ex, rep_range_min: data.rep_range_min || 8, rep_range_max: data.rep_range_max || 12 } as ProgramExercise]); setSelectedExercise(""); setShowAdd(false); }
+    if (data) {
+      setProgramExercises([...programExercises, { ...data, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: data.rep_range_min || 8, rep_range_max: data.rep_range_max || 12 } as ProgramExercise]);
+      setSelectedBase(null); setShowSupportPopup(false); setShowAdd(false);
+    }
   }
 
   async function removeExercise(id: string) {
@@ -75,6 +89,14 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     if (err && err.code === "42703") { const { error: err2 } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight }).eq("id", id); if (!err2) { setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight, rep_range_min: editRepMin, rep_range_max: editRepMax } : pe)); } }
     else if (!err) { setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight, rep_range_min: editRepMin, rep_range_max: editRepMax } : pe)); }
     setEditingId(null);
+  }
+
+  function getGroupedExercises() {
+    const groups: Record<string, ExerciseDef[]> = { PUSH: [], PULL: [], LEGS: [], AUTRES: [] };
+    for (const ex of EXERCISE_CATALOG) {
+      groups[ex.category].push(ex);
+    }
+    return groups;
   }
 
   if (loading || !user) return <p className="p-6">Chargement...</p>;
@@ -145,15 +167,60 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
             ))}
           </div>
 
-          {showAdd ? (
+          {showAdd && !showSupportPopup ? (
             <div className="flex flex-col gap-3">
-              <select value={selectedExercise} onChange={(e) => setSelectedExercise(e.target.value)} className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50 appearance-none">
+              <select
+                value={selectedBase?.baseName || ""}
+                onChange={(e) => {
+                  const ex = EXERCISE_CATALOG.find((c) => c.baseName === e.target.value);
+                  if (ex) {
+                    setSelectedBase(ex);
+                    if (ex.supports.length > 1) {
+                      setShowSupportPopup(true);
+                    } else {
+                      addExercise(ex.supports[0]);
+                    }
+                  }
+                }}
+                className="rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50 appearance-none"
+              >
                 <option value="">Choisir un exercice</option>
-                {allExercises.map((ex) => <option key={ex.id} value={ex.id}>{ex.name} {ex.muscle_group ? `(${ex.muscle_group})` : ""}</option>)}
+                {(() => {
+                  const groups = getGroupedExercises();
+                  return (
+                    <>
+                      {Object.entries(groups).filter(([, exercises]) => exercises.length > 0).map(([group, exercises]) => (
+                        <optgroup key={group} label={group}>
+                          {exercises.map((ex) => <option key={ex.baseName} value={ex.baseName}>{ex.baseName}</option>)}
+                        </optgroup>
+                      ))}
+                    </>
+                  );
+                })()}
               </select>
-              <div className="flex gap-2">
-                <button onClick={addExercise} disabled={!selectedExercise} className="flex-1 rounded-xl bg-green-500 px-6 py-3 font-semibold text-neutral-950 shadow-lg shadow-green-500/20 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100">Ajouter</button>
-                <button onClick={() => { setShowAdd(false); setSelectedExercise(""); }} className="rounded-xl border border-neutral-800 px-6 py-3 text-sm text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all">Annuler</button>
+              <button onClick={() => { setShowAdd(false); setSelectedBase(null); }} className="w-full rounded-xl border border-neutral-800 px-6 py-3 text-sm text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all">Annuler</button>
+            </div>
+          ) : showSupportPopup && selectedBase ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+              <div className="w-full max-w-sm rounded-2xl bg-neutral-900 border border-neutral-800 p-6 relative">
+                <button
+                  onClick={() => setShowSupportPopup(false)}
+                  className="absolute top-4 right-4 text-sm text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all"
+                >
+                  Retour
+                </button>
+                <p className="font-semibold text-lg mb-6">{selectedBase.baseName}</p>
+                <div className="flex flex-col gap-3">
+                  {selectedBase.supports.map((support) => (
+                    <button
+                      key={support}
+                      onClick={() => addExercise(support)}
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-800 px-6 py-4 text-center font-medium text-neutral-50 hover:border-green-500/50 hover:text-green-500 active:scale-[0.98] transition-all"
+                    >
+                      {support}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (

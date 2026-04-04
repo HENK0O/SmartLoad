@@ -7,6 +7,9 @@ import { supabase } from "@/lib/supabase";
 import { analyzeProgression, estimate1RM, type ExerciseHistory, type ExerciseSession, type ProgressionTargets, type ProgressionOption } from "@/lib/progression";
 import { useOnlineStatus, processSyncQueue, queueSync, cacheWorkoutData, getCachedWorkout } from "@/hooks/useOfflineSync";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Confetti } from "@/components/Confetti";
+import { ProgressBar } from "@/components/ProgressBar";
+import { PageSkeleton } from "@/components/Skeleton";
 import Link from "next/link";
 import { ArrowLeft, Plus, Check, X, WifiOff, Zap, TrendingUp, Timer, AlertTriangle } from "lucide-react";
 
@@ -46,9 +49,12 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [restTimers, setRestTimers] = useState<Record<string, number>>({});
   const [timerActive, setTimerActive] = useState<string | null>(null);
+  const [customRestSec, setCustomRestSec] = useState<Record<string, number>>({});
+  const [showCustomTimer, setShowCustomTimer] = useState<string | null>(null);
   const [isOnline, setIsOnlineState] = useState(true);
   const [pendingSyncs, setPendingSyncs] = useState(0);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const onlineStatus = useOnlineStatus();
 
@@ -75,7 +81,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     const interval = setInterval(() => {
       setRestTimers((prev) => {
         const current = prev[timerActive] || 0;
-        if (current <= 1) { setTimerActive(null); return { ...prev, [timerActive]: 0 }; }
+        if (current <= 1) { setTimerActive(null); playTimerSound(); return { ...prev, [timerActive]: 0 }; }
         return { ...prev, [timerActive]: current - 1 };
       });
     }, 1000);
@@ -219,15 +225,55 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     setGroups(groups.map((g) => ({ ...g, sets: g.sets.map((s) => (s.id === setId ? { ...s, [field]: value } : s)) })));
   }
 
-  function startRestTimer(exerciseId: string, restSec: number) { setRestTimers((prev) => ({ ...prev, [exerciseId]: restSec })); setTimerActive(exerciseId); }
+  function startRestTimer(exerciseId: string, restSec: number) {
+    const saved = customRestSec[exerciseId];
+    const duration = saved || restSec;
+    setRestTimers((prev) => ({ ...prev, [exerciseId]: duration }));
+    setTimerActive(exerciseId);
+  }
+
+  function openCustomTimer(exerciseId: string, restSec: number) {
+    setShowCustomTimer(exerciseId);
+    setRestTimers((prev) => ({ ...prev, [`${exerciseId}_default`]: restSec }));
+  }
+
+  function setCustomAndStart(exerciseId: string, seconds: number) {
+    setCustomRestSec((prev) => ({ ...prev, [exerciseId]: seconds }));
+    setRestTimers((prev) => ({ ...prev, [exerciseId]: seconds }));
+    setTimerActive(exerciseId);
+    setShowCustomTimer(null);
+  }
 
   function formatTimer(seconds: number): string { const m = Math.floor(seconds / 60); const s = seconds % 60; return `${m}:${s.toString().padStart(2, "0")}`; }
+
+  function playTimerSound() {
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const playBeep = (time: number, freq: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = "sine";
+        gain.gain.setValueAtTime(0.3, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+        osc.start(time);
+        osc.stop(time + duration);
+      };
+      const now = ctx.currentTime;
+      playBeep(now, 880, 0.15);
+      playBeep(now + 0.2, 880, 0.15);
+      playBeep(now + 0.4, 1100, 0.3);
+    } catch {}
+  }
 
   async function finishWorkout() {
     const completedAt = new Date().toISOString();
     if (isOnline) await supabase.from("workouts").update({ status: "completed", completed_at: completedAt }).eq("id", workoutId);
     else { await queueSync({ table: "workouts", operation: "update", payload: { status: "completed", completed_at: completedAt }, where: { id: workoutId } }); setPendingSyncs((p) => p + 1); }
-    router.push("/programs");
+    setShowConfetti(true);
+    setTimeout(() => router.push("/programs"), 2500);
   }
 
   async function cancelWorkout() {
@@ -239,7 +285,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   if (loading || !user) return <p className="p-6">Chargement...</p>;
 
   return (
-    <main className="flex min-h-screen flex-col p-5 pb-28">
+    <main className="flex min-h-screen flex-col p-5 pb-28 animate-fade-in">
       {!isOnline && (
         <div className="mb-4 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 flex items-center gap-3">
           <WifiOff className="h-4 w-4 text-red-500 shrink-0" />
@@ -279,7 +325,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {loadingData ? (
-        <p className="text-neutral-500">Chargement...</p>
+        <PageSkeleton lines={groups.length || 4} />
       ) : groups.length === 0 ? (
         <p className="text-neutral-500">Aucun exercice dans cette séance.</p>
       ) : (
@@ -339,6 +385,34 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                 )}
 
+                {showCustomTimer === group.exercise.id && (
+                  <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60">
+                    <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-neutral-900 border-t sm:border border-neutral-800 p-6 animate-slide-up">
+                      <div className="flex items-center justify-between mb-4">
+                        <p className="font-semibold text-sm">Temps de repos</p>
+                        <button onClick={() => setShowCustomTimer(null)} className="text-xs text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all">Retour</button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 mb-3">
+                        {[30, 60, 90, 120, 150, 180, 240, 300].map((sec) => (
+                          <button
+                            key={sec}
+                            onClick={() => setCustomAndStart(group.exercise.id, sec)}
+                            className="rounded-xl border border-neutral-800 bg-neutral-800 py-3 text-center font-mono text-sm font-semibold text-neutral-50 hover:border-green-500/50 hover:text-green-500 active:scale-[0.95] transition-all"
+                          >
+                            {sec >= 60 ? `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, "0")}` : `${sec}s`}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setCustomAndStart(group.exercise.id, 0)}
+                        className="w-full rounded-xl border border-neutral-800 py-3 text-sm text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all"
+                      >
+                        Pas de repos
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-2">
                   {group.sets.map((set) => (
                     <div key={set.id} className={`flex items-center gap-3 rounded-xl border p-3 transition-all ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-neutral-800 bg-neutral-900"}`}>
@@ -355,7 +429,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                           <span className="text-[10px] text-neutral-600 w-6">{unit}</span>
                           <input type="number" value={set.reps} onChange={(e) => updateSet(set.id, "reps", parseInt(e.target.value) || 0)} className="w-14 rounded-lg border border-neutral-800 bg-neutral-800 px-2 py-1.5 text-center text-sm text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50" min="0" />
                           <span className="text-[10px] text-neutral-600 w-8">reps</span>
-                          <button onClick={() => { updateSet(set.id, "completed", !set.completed); if (!set.completed && set.rest_sec > 0) startRestTimer(group.exercise.id, set.rest_sec); }} className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-semibold active:scale-95 transition-all ${set.completed ? "bg-green-500 text-neutral-950" : "border border-neutral-800 text-neutral-500 hover:text-neutral-300"}`}>
+                          <button onClick={() => { updateSet(set.id, "completed", !set.completed); if (!set.completed && set.rest_sec > 0) openCustomTimer(group.exercise.id, set.rest_sec); }} className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-semibold active:scale-95 transition-all ${set.completed ? "bg-green-500 text-neutral-950" : "border border-neutral-800 text-neutral-500 hover:text-neutral-300"}`}>
                             {set.completed ? <Check className="h-3.5 w-3.5" /> : "—"}
                           </button>
                         </>
@@ -378,11 +452,19 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
       {!isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-neutral-950/90 backdrop-blur-xl border-t border-neutral-800">
+          <div className="mb-3">
+            <ProgressBar
+              current={groups.reduce((acc, g) => acc + g.sets.filter((s) => s.completed).length, 0)}
+              total={groups.reduce((acc, g) => acc + g.sets.length, 0)}
+            />
+          </div>
           <button onClick={finishWorkout} className="w-full rounded-xl bg-green-500 px-6 py-4 text-base font-bold text-neutral-950 shadow-lg shadow-green-500/20 active:scale-[0.98] transition-all">
             Terminer la séance
           </button>
         </div>
       )}
+
+      <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
 
       <ConfirmDialog open={showCancelConfirm} title="Annuler la séance" message="Toutes les données de cette séance seront perdues." confirmLabel="Annuler la séance" danger onConfirm={cancelWorkout} onCancel={() => setShowCancelConfirm(false)} />
     </main>

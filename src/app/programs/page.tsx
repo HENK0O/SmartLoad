@@ -188,7 +188,7 @@ export default function ProgramsPage() {
   if (loading || !user) return <p className="p-6">Chargement...</p>;
 
   return (
-    <main className="flex min-h-screen flex-col p-5 pb-24">
+    <main className="flex min-h-screen flex-col p-5 pb-24 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">SmartLoad</h1>
         <div className="flex items-center gap-3">

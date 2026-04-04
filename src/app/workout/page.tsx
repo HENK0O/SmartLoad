@@ -6,24 +6,34 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ArrowLeft, Zap, Dumbbell, ChevronRight, Loader2 } from "lucide-react";
 
+import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
+
 interface Program { id: string; name: string; }
 
-interface ExerciseDef {
-  name: string;
-  muscleGroup: string;
-  baseWeight: number;
-  sets: number;
-  repMin: number;
-  repMax: number;
-}
+const PUSH_EXERCISES = EXERCISE_CATALOG.filter((ex) => ex.category === "PUSH").map((ex) => ({
+  name: getFullName(ex.baseName, ex.supports[0]),
+  muscleGroup: ex.muscleGroup,
+  baseWeight: ex.baseName.includes("Développé couché") ? 80
+    : ex.baseName.includes("Développé incliné") ? 60
+    : ex.baseName.includes("Chest press") ? 40
+    : ex.baseName.includes("militaire") ? 40
+    : ex.baseName.includes("Élévations latérales") ? 10
+    : ex.baseName.includes("Triceps") ? 15
+    : 20,
+  sets: ex.baseName.includes("Développé couché") ? 4 : 3,
+  repMin: 6,
+  repMax: 10,
+}));
 
-const PUSH_WORKOUT: ExerciseDef[] = [
-  { name: "Développé couché barre", muscleGroup: "Pectoraux", baseWeight: 80, sets: 4, repMin: 6, repMax: 10 },
-  { name: "Développé incliné barre", muscleGroup: "Pectoraux", baseWeight: 60, sets: 3, repMin: 6, repMax: 10 },
-  { name: "Développé militaire machine", muscleGroup: "Épaules", baseWeight: 40, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Élévations latérales poulie", muscleGroup: "Épaules", baseWeight: 10, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Extension triceps poulie basse", muscleGroup: "Triceps", baseWeight: 20, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Extension triceps au-dessus de la tête", muscleGroup: "Triceps", baseWeight: 15, sets: 3, repMin: 8, repMax: 10 },
+const PUSH_WORKOUT: { name: string; muscleGroup: string; baseWeight: number; sets: number; repMin: number; repMax: number }[] = [
+  { name: "Développé couché (Barre)", muscleGroup: "Pectoraux", baseWeight: 80, sets: 4, repMin: 6, repMax: 10 },
+  { name: "Développé incliné (Barre)", muscleGroup: "Pectoraux", baseWeight: 60, sets: 3, repMin: 6, repMax: 10 },
+  { name: "Chest press (Machine)", muscleGroup: "Pectoraux", baseWeight: 40, sets: 3, repMin: 8, repMax: 10 },
+  { name: "Chest press inclinée (Machine)", muscleGroup: "Pectoraux", baseWeight: 35, sets: 3, repMin: 8, repMax: 10 },
+  { name: "Développé militaire (Machine)", muscleGroup: "Épaules", baseWeight: 40, sets: 3, repMin: 8, repMax: 10 },
+  { name: "Élévations latérales (Haltères)", muscleGroup: "Épaules", baseWeight: 10, sets: 3, repMin: 8, repMax: 10 },
+  { name: "Extensions poulie haute (Corde)", muscleGroup: "Triceps", baseWeight: 20, sets: 3, repMin: 8, repMax: 10 },
+  { name: "Extensions au-dessus de la tête (Poulie)", muscleGroup: "Triceps", baseWeight: 15, sets: 3, repMin: 8, repMax: 10 },
 ];
 
 export default function WorkoutPage() {
@@ -143,10 +153,10 @@ export default function WorkoutPage() {
           <p className="text-lg font-bold text-neutral-950">Séance Push</p>
         </div>
         <p className="text-sm text-neutral-950/70">
-          Développé couché · Incliné · Militaire · Élévations · Triceps
+          Développé couché · Incliné · Chest press · Militaire · Élévations · Triceps
         </p>
         <p className="text-xs text-neutral-950/50 mt-1">
-          19 séries · ~45 min
+          24 séries · ~50 min
         </p>
         {startingPush && <Loader2 className="h-5 w-5 animate-spin text-neutral-950 mt-2" />}
       </button>
