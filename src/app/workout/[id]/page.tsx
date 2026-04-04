@@ -6,9 +6,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { analyzeProgression, estimate1RM, type ExerciseHistory, type ExerciseSession, type ProgressionTargets, type ProgressionOption } from "@/lib/progression";
 import { useOnlineStatus, processSyncQueue, queueSync, cacheWorkoutData, getCachedWorkout } from "@/hooks/useOfflineSync";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { Confetti } from "@/components/Confetti";
-import { ProgressBar } from "@/components/ProgressBar";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import Confetti from "@/components/Confetti";
+import ProgressBar from "@/components/ProgressBar";
 import { PageSkeleton } from "@/components/Skeleton";
 import Link from "next/link";
 import { ArrowLeft, Plus, Check, X, WifiOff, Zap, TrendingUp, Timer, AlertTriangle } from "lucide-react";
@@ -55,6 +55,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [pendingSyncs, setPendingSyncs] = useState(0);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({});
 
   const onlineStatus = useOnlineStatus();
 
@@ -223,6 +224,29 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     if (isOnline) await supabase.from("workout_sets").update({ [field]: value }).eq("id", setId);
     else { await queueSync({ table: "workout_sets", operation: "update", payload: { [field]: value }, where: { id: setId } }); setPendingSyncs((p) => p + 1); }
     setGroups(groups.map((g) => ({ ...g, sets: g.sets.map((s) => (s.id === setId ? { ...s, [field]: value } : s)) })));
+    setDraftValues((prev) => { const n = { ...prev }; delete n[`${setId}-${field}`]; return n; });
+  }
+
+  function handleSetInput(setId: string, field: string, raw: string) {
+    const filtered = raw.replace(/[^0-9.]/g, "");
+    setDraftValues((prev) => ({ ...prev, [`${setId}-${field}`]: filtered }));
+    setGroups(groups.map((g) => ({ ...g, sets: g.sets.map((s) => (s.id === setId ? { ...s, [field]: 0 } : s)) })));
+  }
+
+  function handleSetBlur(setId: string, field: string) {
+    const key = `${setId}-${field}`;
+    const raw = draftValues[key];
+    if (raw !== undefined && raw !== "") {
+      const val = parseFloat(raw);
+      if (!isNaN(val)) { updateSet(setId, field, Math.max(0, val)); return; }
+    }
+    setDraftValues((prev) => { const n = { ...prev }; delete n[key]; return n; });
+  }
+
+  function getDisplayValue(set: WorkoutSet, field: string): string {
+    const key = `${set.id}-${field}`;
+    if (draftValues[key] !== undefined) return draftValues[key];
+    return String(set[field as keyof WorkoutSet] ?? "");
   }
 
   function startRestTimer(exerciseId: string, restSec: number) {
@@ -325,7 +349,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {loadingData ? (
-        <PageSkeleton lines={groups.length || 4} />
+        <PageSkeleton />
       ) : groups.length === 0 ? (
         <p className="text-neutral-500">Aucun exercice dans cette séance.</p>
       ) : (
@@ -425,9 +449,9 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                         </>
                       ) : (
                         <>
-                          <input type="number" value={set.weight} onChange={(e) => updateSet(set.id, "weight", parseFloat(e.target.value) || 0)} className="w-20 rounded-lg border border-neutral-800 bg-neutral-800 px-2 py-1.5 text-center text-sm text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50" step="0.5" min="0" />
+                          <input type="text" inputMode="decimal" value={getDisplayValue(set, "weight")} onChange={(e) => handleSetInput(set.id, "weight", e.target.value)} onBlur={() => handleSetBlur(set.id, "weight")} className="w-20 rounded-lg border border-neutral-800 bg-neutral-800 px-2 py-1.5 text-center text-sm text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50" />
                           <span className="text-[10px] text-neutral-600 w-6">{unit}</span>
-                          <input type="number" value={set.reps} onChange={(e) => updateSet(set.id, "reps", parseInt(e.target.value) || 0)} className="w-14 rounded-lg border border-neutral-800 bg-neutral-800 px-2 py-1.5 text-center text-sm text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50" min="0" />
+                          <input type="text" inputMode="numeric" value={getDisplayValue(set, "reps")} onChange={(e) => handleSetInput(set.id, "reps", e.target.value)} onBlur={() => handleSetBlur(set.id, "reps")} className="w-14 rounded-lg border border-neutral-800 bg-neutral-800 px-2 py-1.5 text-center text-sm text-neutral-50 focus:outline-none focus:ring-2 focus:ring-green-500/50" />
                           <span className="text-[10px] text-neutral-600 w-8">reps</span>
                           <button onClick={() => { updateSet(set.id, "completed", !set.completed); if (!set.completed && set.rest_sec > 0) openCustomTimer(group.exercise.id, set.rest_sec); }} className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-semibold active:scale-95 transition-all ${set.completed ? "bg-green-500 text-neutral-950" : "border border-neutral-800 text-neutral-500 hover:text-neutral-300"}`}>
                             {set.completed ? <Check className="h-3.5 w-3.5" /> : "—"}
@@ -454,8 +478,9 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-neutral-950/90 backdrop-blur-xl border-t border-neutral-800">
           <div className="mb-3">
             <ProgressBar
-              current={groups.reduce((acc, g) => acc + g.sets.filter((s) => s.completed).length, 0)}
-              total={groups.reduce((acc, g) => acc + g.sets.length, 0)}
+              value={groups.reduce((acc, g) => acc + g.sets.filter((s) => s.completed).length, 0)}
+              max={Math.max(groups.reduce((acc, g) => acc + g.sets.length, 0), 1)}
+              label="Progression"
             />
           </div>
           <button onClick={finishWorkout} className="w-full rounded-xl bg-green-500 px-6 py-4 text-base font-bold text-neutral-950 shadow-lg shadow-green-500/20 active:scale-[0.98] transition-all">
@@ -464,9 +489,9 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
+      <Confetti active={showConfetti} />
 
-      <ConfirmDialog open={showCancelConfirm} title="Annuler la séance" message="Toutes les données de cette séance seront perdues." confirmLabel="Annuler la séance" danger onConfirm={cancelWorkout} onCancel={() => setShowCancelConfirm(false)} />
+      <ConfirmDialog open={showCancelConfirm} title="Annuler la séance" description="Toutes les données de cette séance seront perdues." confirmLabel="Annuler la séance" danger onConfirm={cancelWorkout} onCancel={() => setShowCancelConfirm(false)} />
     </main>
   );
 }

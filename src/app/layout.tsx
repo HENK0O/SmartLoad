@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
-import { BottomNav } from "@/components/BottomNav";
+import BottomNav from "@/components/BottomNav";
 import { AppShell } from "@/components/AppShell";
 import { ThemeProvider } from "@/lib/theme";
 

@@ -1,7 +1,8 @@
 "use client";
+
 import { useEffect, useState } from "react";
 
-interface ConfettiPiece {
+interface Particle {
   id: number;
   x: number;
   color: string;
@@ -11,52 +12,77 @@ interface ConfettiPiece {
   rotation: number;
 }
 
-interface ConfettiProps {
-  active: boolean;
-  onComplete?: () => void;
+const COLORS = [
+  "hsl(142 71% 45%)",
+  "hsl(199 89% 48%)",
+  "hsl(45 93% 47%)",
+  "hsl(142 71% 55%)",
+  "hsl(199 89% 58%)",
+  "hsl(45 93% 57%)",
+];
+
+function generateParticles(count: number): Particle[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    delay: Math.random() * 1.5,
+    duration: 2 + Math.random() * 2,
+    size: 4 + Math.random() * 8,
+    rotation: Math.random() * 360,
+  }));
 }
 
-const COLORS = ["#22c55e", "#16a34a", "#4ade80", "#86efac", "#facc15", "#fbbf24", "#60a5fa", "#a78bfa"];
+interface ConfettiProps {
+  active: boolean;
+  duration?: number;
+}
 
-export function Confetti({ active, onComplete }: ConfettiProps) {
-  const [pieces, setPieces] = useState<ConfettiPiece[]>([]);
+export default function Confetti({ active, duration = 3000 }: ConfettiProps) {
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!active) return;
-    const newPieces: ConfettiPiece[] = Array.from({ length: 50 }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      delay: Math.random() * 0.5,
-      duration: 1.5 + Math.random() * 2,
-      size: 4 + Math.random() * 8,
-      rotation: Math.random() * 360,
-    }));
-    setPieces(newPieces);
-    const t = setTimeout(() => { setPieces([]); onComplete?.(); }, 4000);
-    return () => clearTimeout(t);
-  }, [active, onComplete]);
+    if (active) {
+      setParticles(generateParticles(50));
+      setVisible(true);
+      const timer = setTimeout(() => setVisible(false), duration);
+      return () => clearTimeout(timer);
+    }
+  }, [active, duration]);
 
-  if (pieces.length === 0) return null;
+  if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] pointer-events-none overflow-hidden">
-      {pieces.map((p) => (
+    <div className="fixed inset-0 z-50 pointer-events-none overflow-hidden">
+      {particles.map((p) => (
         <div
           key={p.id}
-          className="absolute top-0 animate-[confetti-fall_var(--duration)_ease-in_var(--delay)_forwards]"
+          className="absolute"
           style={{
             left: `${p.x}%`,
-            width: p.size,
-            height: p.size * 0.6,
+            top: "-10px",
+            width: `${p.size}px`,
+            height: `${p.size * 0.6}px`,
             backgroundColor: p.color,
-            borderRadius: Math.random() > 0.5 ? "50%" : "2px",
+            borderRadius: "2px",
             transform: `rotate(${p.rotation}deg)`,
-            ["--delay" as string]: `${p.delay}s`,
-            ["--duration" as string]: `${p.duration}s`,
-          } as React.CSSProperties}
+            animation: `confettiFall ${p.duration}s ease-in ${p.delay}s forwards`,
+          }}
         />
       ))}
+      <style>{`
+        @keyframes confettiFall {
+          0% {
+            transform: translateY(0) rotate(0deg) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(100vh) rotate(720deg) scale(0.5);
+            opacity: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }

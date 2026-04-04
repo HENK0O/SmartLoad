@@ -1,18 +1,75 @@
-export function ProgressBar({ current, total, className = "" }: { current: number; total: number; className?: string }) {
-  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+"use client";
+
+import { cn } from "@/lib/utils";
+
+interface ProgressBarProps {
+  value: number;
+  max?: number;
+  showPercentage?: boolean;
+  size?: "sm" | "md" | "lg";
+  className?: string;
+  label?: string;
+}
+
+export default function ProgressBar({
+  value,
+  max = 100,
+  showPercentage = true,
+  size = "md",
+  className,
+  label,
+}: ProgressBarProps) {
+  const percentage = Math.min(Math.max((value / max) * 100, 0), 100);
+
+  const heightMap = { sm: "h-1.5", md: "h-2.5", lg: "h-3.5" };
 
   return (
-    <div className={`w-full ${className}`}>
-      <div className="flex justify-between text-xs text-neutral-500 mb-1">
-        <span>{current}/{total} séries</span>
-        <span>{pct}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
+    <div className={cn("w-full", className)}>
+      {(label || showPercentage) && (
+        <div className="flex items-center justify-between mb-2">
+          {label && <span className="text-sm text-white/70">{label}</span>}
+          {showPercentage && (
+            <span
+              className="text-sm font-semibold"
+              style={{ color: "hsl(142 71% 45%)" }}
+            >
+              {Math.round(percentage)}%
+            </span>
+          )}
+        </div>
+      )}
+      <div
+        className={cn("w-full rounded-full overflow-hidden", heightMap[size])}
+        style={{ backgroundColor: "hsl(220 15% 14%)" }}
+      >
         <div
-          className="h-full rounded-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-500 ease-out"
-          style={{ width: `${pct}%` }}
-        />
+          className={cn(
+            "h-full rounded-full transition-all duration-500 ease-out",
+            "relative"
+          )}
+          style={{
+            width: `${percentage}%`,
+            background:
+              "linear-gradient(90deg, hsl(142 71% 45%), hsl(142 71% 55%))",
+            boxShadow: "0 0 12px hsl(142 71% 45% / 0.4)",
+          }}
+        >
+          <div
+            className="absolute inset-0 rounded-full"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent 0%, hsl(0 0% 100% / 0.15) 50%, transparent 100%)",
+              animation: "progressShimmer 2s infinite",
+            }}
+          />
+        </div>
       </div>
+      <style>{`
+        @keyframes progressShimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   );
 }

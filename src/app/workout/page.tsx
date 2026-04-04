@@ -10,21 +10,6 @@ import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
 
 interface Program { id: string; name: string; }
 
-const PUSH_EXERCISES = EXERCISE_CATALOG.filter((ex) => ex.category === "PUSH").map((ex) => ({
-  name: getFullName(ex.baseName, ex.supports[0]),
-  muscleGroup: ex.muscleGroup,
-  baseWeight: ex.baseName.includes("Développé couché") ? 80
-    : ex.baseName.includes("Développé incliné") ? 60
-    : ex.baseName.includes("Chest press") ? 40
-    : ex.baseName.includes("militaire") ? 40
-    : ex.baseName.includes("Élévations latérales") ? 10
-    : ex.baseName.includes("Triceps") ? 15
-    : 20,
-  sets: ex.baseName.includes("Développé couché") ? 4 : 3,
-  repMin: 6,
-  repMax: 10,
-}));
-
 const PUSH_WORKOUT: { name: string; muscleGroup: string; baseWeight: number; sets: number; repMin: number; repMax: number }[] = [
   { name: "Développé couché (Barre)", muscleGroup: "Pectoraux", baseWeight: 80, sets: 4, repMin: 6, repMax: 10 },
   { name: "Développé incliné (Barre)", muscleGroup: "Pectoraux", baseWeight: 60, sets: 3, repMin: 6, repMax: 10 },
@@ -134,10 +119,10 @@ export default function WorkoutPage() {
   if (loading || !user) return <p className="p-6">Chargement...</p>;
 
   return (
-    <main className="flex min-h-screen flex-col p-5 pb-24">
+    <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Nouvelle séance</h1>
-        <Link href="/programs" className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-300 active:scale-95 transition-all">
+        <Link href="/programs" className="inline-flex items-center gap-1 text-sm active:scale-95 transition-all" style={{ color: "hsl(220 15% 50%)" }}>
           <ArrowLeft className="h-4 w-4" />
           Retour
         </Link>
@@ -146,38 +131,49 @@ export default function WorkoutPage() {
       <button
         onClick={startPushWorkout}
         disabled={startingPush}
-        className="w-full rounded-2xl bg-gradient-to-br from-green-500 to-green-600 p-5 text-left shadow-lg shadow-green-500/20 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:active:scale-100 mb-6"
+        className="w-full rounded-2xl p-6 text-left active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100 mb-6 animate-slide-up"
+        style={{
+          background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))",
+          boxShadow: "0 8px 32px hsl(142 71% 45% / 0.25)",
+        }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Zap className="h-5 w-5 text-neutral-950" />
-          <p className="text-lg font-bold text-neutral-950">Séance Push</p>
+          <Zap className="h-5 w-5 text-white" />
+          <p className="text-lg font-bold text-white">Séance Push</p>
         </div>
-        <p className="text-sm text-neutral-950/70">
+        <p className="text-sm text-white/70">
           Développé couché · Incliné · Chest press · Militaire · Élévations · Triceps
         </p>
-        <p className="text-xs text-neutral-950/50 mt-1">
+        <p className="text-xs text-white/50 mt-1">
           24 séries · ~50 min
         </p>
-        {startingPush && <Loader2 className="h-5 w-5 animate-spin text-neutral-950 mt-2" />}
+        {startingPush && <Loader2 className="h-5 w-5 animate-spin text-white mt-2" />}
       </button>
 
       {programs.length > 0 && (
         <>
-          <p className="text-sm font-medium text-neutral-500 mb-3">Mes programmes</p>
+          <p className="text-sm font-medium mb-3 animate-slide-up stagger-1" style={{ color: "hsl(220 15% 45%)" }}>Mes programmes</p>
           <div className="flex flex-col gap-2.5">
-            {programs.map((p) => (
+            {programs.map((p, idx) => (
               <button
                 key={p.id}
                 onClick={() => startWorkout(p.id)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-left flex items-center justify-between active:scale-[0.98] transition-all hover:border-green-500/30"
+                className="w-full rounded-2xl p-4 text-left flex items-center justify-between active:scale-[0.98] transition-all animate-slide-up"
+                style={{
+                  backgroundColor: "hsl(220 15% 9%)",
+                  border: "1px solid hsl(220 15% 14%)",
+                  animationDelay: `${(idx + 2) * 0.05}s`,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.3)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "hsl(220 15% 14%)")}
               >
                 <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-green-500/10 p-2">
-                    <Dumbbell className="h-4 w-4 text-green-500" />
+                  <div className="rounded-xl p-2" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)" }}>
+                    <Dumbbell className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
                   </div>
-                  <span className="font-semibold">{p.name}</span>
+                  <span className="font-semibold text-sm text-white">{p.name}</span>
                 </div>
-                <ChevronRight className="h-4 w-4 text-neutral-600" />
+                <ChevronRight className="h-4 w-4" style={{ color: "hsl(220 15% 35%)" }} />
               </button>
             ))}
           </div>

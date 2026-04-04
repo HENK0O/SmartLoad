@@ -2,48 +2,53 @@
 
 @layer base {
   :root {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 7%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 142 76% 36%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.8% 46.1%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 142 76% 36%;
-    --radius: 0.75rem;
+    --background: 220 15% 6%;
+    --foreground: 210 40% 98%;
+    --card: 220 15% 9%;
+    --card-border: 220 15% 14%;
+    --card-foreground: 210 40% 98%;
+    --popover: 220 15% 9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 142 71% 45%;
+    --primary-glow: 142 71% 45% / 0.25;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 12%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 10% 40%;
+    --muted-foreground: 220 10% 55%;
+    --accent: 220 15% 12%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 14%;
+    --input: 220 15% 12%;
+    --ring: 142 71% 45%;
+    --radius: 0.875rem;
+    --nav-height: 72px;
   }
 
   .light {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 96%;
-    --card-foreground: 0 0% 3.9%;
+    --background: 0 0% 98%;
+    --foreground: 220 15% 10%;
+    --card: 0 0% 100%;
+    --card-border: 220 15% 90%;
+    --card-foreground: 220 15% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 142 76% 36%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 142 76% 36%;
+    --popover-foreground: 220 15% 10%;
+    --primary: 142 71% 45%;
+    --primary-glow: 142 71% 45% / 0.15;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 95%;
+    --secondary-foreground: 220 15% 10%;
+    --muted: 220 10% 55%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 220 15% 95%;
+    --accent-foreground: 220 15% 10%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 90%;
+    --input: 220 15% 92%;
+    --ring: 142 71% 45%;
   }
 }
 
@@ -51,33 +56,59 @@
   * {
     @apply border-[hsl(var(--border))];
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
     @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))];
-    font-family: var(--font-geist-sans), system-ui, sans-serif;
-    -webkit-tap-highlight-color: transparent;
+    font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button, a, [role="button"], input[type="submit"], input[type="button"], select, label {
+    cursor: pointer;
+  }
+
+  input, textarea {
+    cursor: text;
   }
 
   ::selection {
     @apply bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))];
   }
-}
 
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted) / 0.3);
+    border-radius: 999px;
   }
 }
 
-@keyframes loading {
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes loading-bar {
   0% { width: 0%; }
   50% { width: 70%; }
   100% { width: 100%; }
 }
 
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -87,12 +118,8 @@
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.92); }
+  from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes progress-fill {
-  from { width: 0%; }
 }
 
 @keyframes ripple {
@@ -105,8 +132,28 @@
   100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
 }
 
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px hsl(var(--primary) / 0.15); }
+  50% { box-shadow: 0 0 40px hsl(var(--primary) / 0.3); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 .animate-slide-up {
-  animation: slide-up 0.4s ease-out both;
+  animation: slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-down {
+  animation: slide-down 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .animate-fade-in {
@@ -114,10 +161,20 @@
 }
 
 .animate-scale-in {
-  animation: scale-in 0.3s ease-out both;
+  animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.light body {
-  @apply bg-white text-neutral-900;
+.animate-float {
+  animation: float 3s ease-in-out infinite;
 }
 
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
