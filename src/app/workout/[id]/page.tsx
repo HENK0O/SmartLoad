@@ -64,6 +64,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [appliedProgression, setAppliedProgression] = useState<Record<string, string>>({});
   const [defaultRestTime, setDefaultRestTime] = useState(90);
   const [timerSoundEnabled, setTimerSoundEnabled] = useState(true);
+  const [showSummary, setShowSummary] = useState(false);
 
   const onlineStatus = useOnlineStatus();
 
@@ -322,7 +323,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     if (isOnline) await supabase.from("workouts").update({ status: "completed", completed_at: completedAt }).eq("id", workoutId);
     else { await queueSync({ table: "workouts", operation: "update", payload: { status: "completed", completed_at: completedAt }, where: { id: workoutId } }); setPendingSyncs((p) => p + 1); }
     setShowConfetti(true);
-    setTimeout(() => router.push("/programs"), 2500);
+    setShowSummary(true);
   }
 
   async function cancelWorkout() {
@@ -562,6 +563,42 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       <Confetti active={showConfetti} />
+
+      {/* Post-workout summary */}
+      {showSummary && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(220 15% 6% / 0.85)", backdropFilter: "blur(12px)" }}>
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 pb-8 animate-slide-up" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)", boxShadow: "0 24px 48px hsl(0 0% 0% / 0.4)" }}>
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 8px 24px hsl(142 71% 45% / 0.3)" }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-1">Séance terminée !</h2>
+              <p className="text-sm" style={{ color: "hsl(220 15% 45%)" }}>Bien joué, continue comme ça 💪</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(220 15% 11%)" }}>
+                <p className="text-2xl font-bold text-white">{completedSets}</p>
+                <p className="text-[10px]" style={{ color: "hsl(220 15% 40%)" }}>Séries</p>
+              </div>
+              <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(220 15% 11%)" }}>
+                <p className="text-2xl font-bold text-white">{groups.length}</p>
+                <p className="text-[10px]" style={{ color: "hsl(220 15% 40%)" }}>Exercices</p>
+              </div>
+              <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(220 15% 11%)" }}>
+                <p className="text-2xl font-bold text-white">{Math.round(groups.reduce((acc, g) => acc + g.sets.reduce((a, s) => a + s.weight * s.reps, 0), 0))}</p>
+                <p className="text-[10px]" style={{ color: "hsl(220 15% 40%)" }}>Volume (kg)</p>
+              </div>
+            </div>
+
+            <button onClick={() => router.push("/programs")} className="w-full rounded-xl px-6 py-4 text-base font-bold text-white active:scale-[0.98] transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)" }}>
+              Retour aux programmes
+            </button>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog open={showCancelConfirm} title="Annuler la séance" description="Toutes les données de cette séance seront perdues." confirmLabel="Annuler la séance" danger onConfirm={cancelWorkout} onCancel={() => setShowCancelConfirm(false)} />
     </main>

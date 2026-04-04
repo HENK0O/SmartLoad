@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { useApp } from "@/lib/context";
+import { t } from "@/lib/i18n";
 import { estimate1RM } from "@/lib/progression";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import Link from "next/link";
@@ -16,6 +18,7 @@ interface ExerciseTrend { exerciseName: string; data: { date: string; weight: nu
 
 export default function AnalyticsPage() {
   const { user, loading } = useAuth();
+  const { lang } = useApp();
   const router = useRouter();
   const [prs, setPRs] = useState<PR[]>([]);
   const [volumeData, setVolumeData] = useState<VolumeData[]>([]);
@@ -74,16 +77,16 @@ export default function AnalyticsPage() {
 
   return (
     <main className="flex min-h-screen flex-col p-5 pb-24">
-      <h1 className="text-2xl font-bold tracking-tight mb-6">Statistiques</h1>
+      <h1 className="text-2xl font-bold tracking-tight mb-6">{t("analytics_title", lang)}</h1>
 
       {loadingData ? (
-        <p className="text-neutral-500">Chargement...</p>
+        <p className="text-neutral-500">{t("programs_loading", lang)}</p>
       ) : totalWorkouts === 0 ? (
         <div className="text-center py-16">
           <Dumbbell className="h-12 w-12 text-neutral-700 mx-auto mb-4" />
-          <p className="text-neutral-500 mb-4">Aucune séance complétée.</p>
+          <p className="text-neutral-500 mb-4">{t("analytics_no_data", lang)}</p>
           <Link href="/workout" className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-6 py-3 font-semibold text-neutral-950 shadow-lg shadow-green-500/20 active:scale-95 transition-all">
-            Commencer une séance
+            {lang === "en" ? "Start a workout" : "Commencer une séance"}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -91,9 +94,9 @@ export default function AnalyticsPage() {
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-2.5">
             {[
-              { label: "Séances", value: totalWorkouts, icon: CalendarDays },
-              { label: "Volume", value: displayWeight(totalVolume), icon: BarChart3 },
-              { label: "Exercices", value: prs.length, icon: Trophy },
+              { label: t("analytics_total_workouts", lang), value: totalWorkouts, icon: CalendarDays },
+              { label: t("analytics_total_volume", lang), value: displayWeight(totalVolume), icon: BarChart3 },
+              { label: lang === "en" ? "Exercises" : "Exercices", value: prs.length, icon: Trophy },
             ].map((stat) => (
               <div key={stat.label} className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 text-center">
                 <stat.icon className="h-4 w-4 text-green-500 mx-auto mb-1.5" />
@@ -107,7 +110,7 @@ export default function AnalyticsPage() {
             <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Trophy className="h-4 w-4 text-yellow-500" />
-                <h2 className="text-sm font-semibold">Records personnels (1RM)</h2>
+                <h2 className="text-sm font-semibold">{lang === "en" ? "Personal Records (1RM)" : "Records personnels (1RM)"}</h2>
               </div>
               <div className="flex flex-col gap-0">
                 {prs.slice(0, 6).map((pr, i) => (
@@ -125,7 +128,7 @@ export default function AnalyticsPage() {
 
           {volumeData.length > 0 && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="text-sm font-semibold mb-3">Volume par séance</h2>
+              <h2 className="text-sm font-semibold mb-3">{lang === "en" ? "Volume per workout" : "Volume par séance"}</h2>
               <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={volumeData}>
@@ -142,7 +145,7 @@ export default function AnalyticsPage() {
 
           {frequencyData.length > 0 && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="text-sm font-semibold mb-3">Fréquence par jour</h2>
+              <h2 className="text-sm font-semibold mb-3">{lang === "en" ? "Frequency by day" : "Fréquence par jour"}</h2>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={frequencyData}>
