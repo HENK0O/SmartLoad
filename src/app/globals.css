@@ -74,6 +74,12 @@
     cursor: text;
   }
 
+  @media (hover: hover) {
+    button:hover { filter: brightness(1.1); }
+    button:active { filter: brightness(1); }
+    a:hover { filter: brightness(1.1); }
+  }
+
   ::selection {
     @apply bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))];
   }

@@ -61,6 +61,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [showAllExercises, setShowAllExercises] = useState(false);
   const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
+  const [appliedProgression, setAppliedProgression] = useState<Record<string, string>>({});
 
   const onlineStatus = useOnlineStatus();
 
@@ -206,6 +207,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     if (isOnline) { for (const set of group.sets) await supabase.from("workout_sets").update({ reps: option.reps, weight: option.weight }).eq("id", set.id); }
     else { for (const set of group.sets) await queueSync({ table: "workout_sets", operation: "update", payload: { reps: option.reps, weight: option.weight }, where: { id: set.id } }); setPendingSyncs((p) => p + group.sets.length); }
     setGroups(groups.map((g) => g.exercise.id === exerciseId ? { ...g, sets: g.sets.map((s) => ({ ...s, reps: option.reps, weight: option.weight })) } : g));
+    setAppliedProgression((prev) => ({ ...prev, [exerciseId]: type }));
   }
 
   async function addSet(exerciseId: string) {
@@ -408,7 +410,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Exercise content */}
-      <div className={`flex-1 px-4 py-4 transition-all duration-200 ${slideDirection === "left" ? "opacity-0 translate-x-8" : slideDirection === "right" ? "opacity-0 -translate-x-8" : "opacity-0 translate-x-0"}`}
+      <div className={`flex-1 px-4 py-4 ${slideDirection === "left" ? "opacity-0 translate-x-8" : slideDirection === "right" ? "opacity-0 -translate-x-8" : "opacity-100 translate-x-0"}`}
         style={{ transition: slideDirection ? "all 0.2s ease-out" : "none" }}
       >
         {currentGroup && (
@@ -436,10 +438,20 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                 </div>
                 <div className="flex gap-2 mb-2">
-                  <button onClick={() => applyProgression(currentGroup.exercise.id, sp.primary.type)} className="flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold text-white active:scale-95 transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)" }}>
+                  <button onClick={() => applyProgression(currentGroup.exercise.id, sp.primary.type)} className="flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold active:scale-95 transition-all"
+                    style={appliedProgression[currentGroup.exercise.id] === "reps"
+                      ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)", color: "white" }
+                      : { backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 70%)" }
+                    }
+                  >
                     {sp.primary.label}
                   </button>
-                  <button onClick={() => applyProgression(currentGroup.exercise.id, sp.alternative.type)} className="flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold active:scale-95 transition-all" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 70%)" }}>
+                  <button onClick={() => applyProgression(currentGroup.exercise.id, sp.alternative.type)} className="flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold active:scale-95 transition-all"
+                    style={appliedProgression[currentGroup.exercise.id] === "weight"
+                      ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)", color: "white" }
+                      : { backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 70%)" }
+                    }
+                  >
                     {sp.alternative.label}
                   </button>
                 </div>
@@ -524,8 +536,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Bottom bar */}
       {!isReadOnly && (
-        <div className="fixed bottom-0 left-0 right-0 p-4" style={{ backgroundColor: "hsl(220 15% 9% / 0.9)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: "1px solid hsl(220 15% 14%)" }}>
-          {/* Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 p-4" style={{ backgroundColor: "hsl(220 15% 9% / 0.95)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: "1px solid hsl(220 15% 14%)" }}>
           <div className="flex items-center gap-3 mb-3">
             <button onClick={() => navigateExercise("prev")} disabled={currentExerciseIndex === 0} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }}>
               <ChevronLeft className="h-5 w-5 text-white" />
@@ -541,8 +552,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
             <button onClick={() => setShowAllExercises(true)} className="rounded-xl px-4 py-3 text-sm font-medium active:scale-95 transition-all" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 60%)" }}>
               <List className="h-4 w-4" />
             </button>
-            <button onClick={finishWorkout} className="flex-1 rounded-xl px-6 py-3 text-base font-bold text-white active:scale-[0.98] transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)" }}>
-              Terminer la séance
+            <button onClick={finishWorkout} className="flex-1 rounded-xl px-6 py-4 text-base font-bold text-white active:scale-[0.98] transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: completedSets === totalSets && totalSets > 0 ? "0 0 32px hsl(142 71% 45% / 0.4)" : "0 4px 16px hsl(142 71% 45% / 0.3)" }}>
+              {completedSets === totalSets && totalSets > 0 ? "✓ Finir la séance" : "Terminer la séance"}
             </button>
           </div>
         </div>
