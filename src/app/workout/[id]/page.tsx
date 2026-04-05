@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -9,10 +9,12 @@ import { useOnlineStatus, processSyncQueue, queueSync, cacheWorkoutData, getCach
 import ConfirmDialog from "@/components/ConfirmDialog";
 import Confetti from "@/components/Confetti";
 import ProgressBar from "@/components/ProgressBar";
+import { t } from "@/lib/i18n";
+import { useApp } from "@/lib/context";
 import Link from "next/link";
 import {
   ArrowLeft, Plus, Check, X, WifiOff, Zap, TrendingUp, Timer, AlertTriangle,
-  ChevronLeft, ChevronRight, Dumbbell, List, Trophy
+  ChevronLeft, ChevronRight, Dumbbell, List, Trophy, Clock
 } from "lucide-react";
 
 interface Exercise { id: string; name: string; muscle_group: string | null; }
@@ -38,8 +40,32 @@ interface SmartProgression {
   primary: ProgressionOption; alternative: ProgressionOption; deload: ProgressionOption | null;
 }
 
+interface LastSessionSet {
+  exerciseId: string;
+  setNumber: number;
+  reps: number;
+  weight: number;
+}
+
+const PLATE_SIZES = [25, 20, 15, 10, 5, 2.5, 1.25];
+const BAR_WEIGHT = 20;
+
+function calculatePlates(targetWeight: number): { plates: { size: number; count: number }[]; barWeight: number } {
+  if (targetWeight <= BAR_WEIGHT) return { plates: [], barWeight: BAR_WEIGHT };
+  let remaining = targetWeight - BAR_WEIGHT;
+  const plates: Record<number, number> = {};
+  for (const size of PLATE_SIZES) {
+    const count = Math.floor(remaining / (size * 2));
+    if (count > 0) plates[size] = count;
+    remaining -= count * size * 2;
+    if (remaining < 0.01) break;
+  }
+  return { plates: Object.entries(plates).map(([size, count]) => ({ size: parseFloat(size), count })), barWeight: BAR_WEIGHT };
+}
+
 export default function WorkoutDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, loading } = useAuth();
+  const { lang } = useApp();
   const router = useRouter();
   const [workoutId, setWorkoutId] = useState("");
   const [programName, setProgramName] = useState("");
@@ -69,8 +95,15 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [exerciseHistory, setExerciseHistory] = useState<{ date: string; weight: number; reps: number; oneRM: number }[]>([]);
   const [showPR, setShowPR] = useState(false);
   const [prInfo, setPRInfo] = useState({ exercise: "", oneRM: 0 });
+  const [lastSessionSets, setLastSessionSets] = useState<Record<string, LastSessionSet[]>>({});
+  const [lastSessionVolume, setLastSessionVolume] = useState(0);
+  const [newPRs, setNewPRs] = useState<string[]>([]);
+  const [showPlates, setShowPlates] = useState<string | null>(null);
+  const [completedSetAnimations, setCompletedSetAnimations] = useState<Record<string, boolean>>({});
 
   const onlineStatus = useOnlineStatus();
+  const workoutStartTime = useRef<number>(Date.now());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => { setIsOnlineState(onlineStatus); }, [onlineStatus]);
 
@@ -81,6 +114,19 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       });
     }
   }, [onlineStatus]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - workoutStartTime.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  function formatElapsed(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
 
   const isReadOnly = workoutStatus !== "in_progress";
   const currentGroup = groups[currentExerciseIndex] || null;
@@ -132,10 +178,14 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       setWorkoutStatus(workout.status as string);
       setWorkoutDate(new Date(workout.started_at as string).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }));
 
+      let groupsData: ExerciseGroup[] = [];
+      let programId: string | null = null;
+
       if (workout.program_id) {
+        programId = workout.program_id as string;
         const { data: pe } = await supabase.from("program_exercises").select("exercise_id, target_sets, target_reps, target_weight, exercises(id, name, muscle_group)").eq("program_id", workout.program_id as string).order("sort_order");
         if (pe) {
-          const groupsData: ExerciseGroup[] = (pe as unknown as ProgramExercise[]).map((p) => ({
+          groupsData = (pe as unknown as ProgramExercise[]).map((p) => ({
             exercise: p.exercises, targetSets: p.target_sets, targetReps: p.target_reps, targetWeight: p.target_weight,
             repRangeMin: p.rep_range_min || p.target_reps, repRangeMax: p.rep_range_max || p.target_reps + 4, sets: [],
           }));
@@ -145,15 +195,6 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               const group = groupsData.find((g) => g.exercise.id === s.exercise_id);
               if (group) group.sets.push({ id: s.id, exercise_id: s.exercise_id, set_number: s.set_number, reps: s.reps, weight: s.weight, rest_sec: s.rest_sec, completed: s.completed });
             }
-          }
-          setGroups(groupsData);
-          if (workout.status === "in_progress") {
-            const info: Record<string, SmartProgression> = {};
-            for (const group of groupsData) {
-              const result = await loadSmartProgression(group.exercise.id, group.exercise.name, group.exercise.muscle_group, workout.program_id as string, groupsData);
-              if (result) info[group.exercise.id] = result;
-            }
-            setSmartProgression(info);
           }
         }
       } else {
@@ -166,23 +207,39 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
             if (!exerciseMap[exId]) { exerciseMap[exId] = { exercise: s.exercises as Exercise, sets: [] }; exerciseOrder.push(exId); }
             exerciseMap[exId].sets.push({ id: s.id, exercise_id: s.exercise_id, set_number: s.set_number, reps: s.reps, weight: s.weight, rest_sec: s.rest_sec, completed: s.completed });
           }
-          const groupsData: ExerciseGroup[] = exerciseOrder.map((exId) => {
+          groupsData = exerciseOrder.map((exId) => {
             const entry = exerciseMap[exId];
-            const completedSets = entry.sets.filter((s) => s.completed);
-            const avgReps = completedSets.length > 0 ? Math.round(completedSets.reduce((sum, s) => sum + s.reps, 0) / completedSets.length) : entry.sets[0].reps;
-            const avgWeight = completedSets.length > 0 ? Math.round(completedSets.reduce((sum, s) => sum + s.weight, 0) / completedSets.length * 10) / 10 : entry.sets[0].weight;
+            const completedSetsArr = entry.sets.filter((s) => s.completed);
+            const avgReps = completedSetsArr.length > 0 ? Math.round(completedSetsArr.reduce((sum, s) => sum + s.reps, 0) / completedSetsArr.length) : entry.sets[0].reps;
+            const avgWeight = completedSetsArr.length > 0 ? Math.round(completedSetsArr.reduce((sum, s) => sum + s.weight, 0) / completedSetsArr.length * 10) / 10 : entry.sets[0].weight;
             return { exercise: entry.exercise, targetSets: entry.sets.length, targetReps: avgReps, targetWeight: avgWeight, repRangeMin: avgReps, repRangeMax: avgReps + 4, sets: entry.sets };
           });
-          setGroups(groupsData);
-          if (workout.status === "in_progress") {
-            const info: Record<string, SmartProgression> = {};
-            for (const group of groupsData) {
-              const result = await loadSmartProgression(group.exercise.id, group.exercise.name, group.exercise.muscle_group, null, groupsData);
-              if (result) info[group.exercise.id] = result;
+        }
+      }
+
+      setGroups(groupsData);
+
+      if (workout.status === "in_progress") {
+        const info: Record<string, SmartProgression> = {};
+        const lastSetsMap: Record<string, LastSessionSet[]> = {};
+        let lastVol = 0;
+
+        for (const group of groupsData) {
+          const result = await loadSmartProgression(group.exercise.id, group.exercise.name, group.exercise.muscle_group, programId, groupsData);
+          if (result) info[group.exercise.id] = result;
+
+          const { data: lastWorkout } = await supabase.from("workouts").select("id").eq("user_id", user!.id).eq("status", "completed").neq("id", workoutId).order("started_at", { ascending: false }).limit(1).single();
+          if (lastWorkout) {
+            const { data: lastSets } = await supabase.from("workout_sets").select("exercise_id, set_number, reps, weight, completed").eq("workout_id", lastWorkout.id).eq("exercise_id", group.exercise.id).order("set_number");
+            if (lastSets && lastSets.length > 0) {
+              lastSetsMap[group.exercise.id] = lastSets.map((s) => ({ exerciseId: s.exercise_id, setNumber: s.set_number, reps: s.reps, weight: s.weight }));
+              for (const s of lastSets) { if (s.completed) lastVol += s.weight * s.reps; }
             }
-            setSmartProgression(info);
           }
         }
+        setSmartProgression(info);
+        setLastSessionSets(lastSetsMap);
+        setLastSessionVolume(Math.round(lastVol));
       }
     }
     setLoadingData(false);
@@ -221,6 +278,12 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     setAppliedProgression((prev) => ({ ...prev, [exerciseId]: type }));
   }
 
+  function triggerHaptic(pattern: "light" | "medium" | "success" | "pr") {
+    if (typeof navigator === "undefined" || !navigator.vibrate) return;
+    const patterns = { light: 10, medium: 30, success: [30, 20, 30], pr: [50, 30, 50, 30, 100] };
+    navigator.vibrate(patterns[pattern]);
+  }
+
   async function checkForPR(exerciseId: string, exerciseName: string) {
     const group = groups.find((g) => g.exercise.id === exerciseId);
     if (!group) return;
@@ -233,6 +296,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       if (bestSet > currentBest) {
         setPRInfo({ exercise: exerciseName, oneRM: Math.round(bestSet * 10) / 10 });
         setShowPR(true);
+        setNewPRs((prev) => [...prev, `${exerciseName}: ${Math.round(bestSet * 10) / 10} kg`]);
+        triggerHaptic("pr");
         setTimeout(() => setShowPR(false), 4000);
       }
     }
@@ -303,6 +368,16 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     return String(set[field as keyof WorkoutSet] ?? "");
   }
 
+  function getVsLast(exerciseId: string, setNumber: number, field: "weight" | "reps"): { diff: number; status: "above" | "below" | "same" | "none" } {
+    const lastSets = lastSessionSets[exerciseId];
+    if (!lastSets) return { diff: 0, status: "none" };
+    const lastSet = lastSets.find((s) => s.setNumber === setNumber);
+    if (!lastSet) return { diff: 0, status: "none" };
+    const currentVal = field === "weight" ? lastSet.weight : lastSet.reps;
+    const diff = 0;
+    return { diff: 0, status: "none" };
+  }
+
   function startRestTimer(exerciseId: string, restSec: number) {
     const saved = customRestSec[exerciseId];
     const duration = saved || restSec;
@@ -361,6 +436,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     const completedAt = new Date().toISOString();
     if (isOnline) await supabase.from("workouts").update({ status: "completed", completed_at: completedAt }).eq("id", workoutId);
     else { await queueSync({ table: "workouts", operation: "update", payload: { status: "completed", completed_at: completedAt }, where: { id: workoutId } }); setPendingSyncs((p) => p + 1); }
+    triggerHaptic("success");
     setShowConfetti(true);
     setShowSummary(true);
   }
@@ -373,12 +449,11 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
   if (loading || !user) return <p className="p-6">Chargement...</p>;
 
-  // All-exercises view (read-only / history)
   if (showAllExercises || isReadOnly) {
     return (
       <main className="flex min-h-screen flex-col p-4 pb-28 animate-fade-in">
         <div className="flex items-center gap-3 mb-4">
-          <button onClick={() => setShowAllExercises(false)} className="p-2 rounded-xl active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card))" }}>
+          <button onClick={() => { if (isReadOnly) router.push("/programs"); else setShowAllExercises(false); }} className="p-2 rounded-xl active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card))" }}>
             <ArrowLeft className="h-5 w-5 text-[hsl(var(--text-white-60))]" />
           </button>
           <h1 className="text-xl font-bold text-[hsl(var(--text-white))]">{programName}</h1>
@@ -391,13 +466,13 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         <div className="flex flex-col gap-5">
           {groups.map((group) => (
             <div key={group.exercise.id}>
-                  <h2 className="text-base font-semibold mb-3 text-[hsl(var(--text-white))]">
+              <h2 className="text-base font-semibold mb-3 text-[hsl(var(--text-white))]">
                 {group.exercise.name}
                 {group.exercise.muscle_group && <span className="text-sm ml-1.5" style={{ color: "hsl(var(--muted-foreground-dim))" }}>({group.exercise.muscle_group})</span>}
               </h2>
               <div className="flex flex-col gap-2">
                 {group.sets.map((set) => (
-                    <div key={set.id} className={`flex items-center gap-3 rounded-xl p-3 transition-all ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`}>
+                  <div key={set.id} className={`flex items-center gap-3 rounded-xl p-3 transition-all ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`}>
                     <span className="text-xs w-7 font-mono" style={{ color: "hsl(var(--muted-foreground-dim))" }}>S{set.set_number}</span>
                     <span className="w-20 text-center font-semibold text-sm text-[hsl(var(--text-white))]">{displayWeight(set.weight)}</span>
                     <span className="w-16 text-center text-sm" style={{ color: "hsl(var(--icon-muted))" }}>{set.reps} reps</span>
@@ -412,10 +487,12 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  // One-exercise-at-a-time view
   const sp = currentGroup ? smartProgression[currentGroup.exercise.id] : null;
   const timer = currentGroup ? restTimers[currentGroup.exercise.id] : undefined;
   const isTimerRunning = currentGroup ? timerActive === currentGroup.exercise.id : false;
+
+  const currentVolume = groups.reduce((acc, g) => acc + g.sets.filter((s) => s.completed).reduce((a, s) => a + s.weight * s.reps, 0), 0);
+  const volumeDiff = lastSessionVolume > 0 ? Math.round(currentVolume - lastSessionVolume) : 0;
 
   return (
     <main className="flex min-h-screen flex-col animate-fade-in">
@@ -425,13 +502,17 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           <Link href="/programs" className="p-2 rounded-xl active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card))" }}>
             <ArrowLeft className="h-5 w-5 text-[hsl(var(--text-white-60))]" />
           </Link>
-          <div className="flex items-center gap-2">
-            {!isOnline && <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "hsl(0 72% 51%)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51%)" }} />Hors ligne</span>}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
+              <Clock className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
+              <span className="text-xs font-mono font-semibold text-[hsl(var(--text-white))]">{formatElapsed(elapsedSeconds)}</span>
+            </div>
+            {!isOnline && <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "hsl(0 72% 51%)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51%)" }} />{t("workout_offline", lang)}</span>}
           </div>
         </div>
       </div>
 
-      {/* Exercise stepper */}
+      {/* Exercise stepper - FIXED */}
       <div className="px-4 py-2 flex items-center gap-1.5 overflow-x-auto">
         {groups.map((g, i) => {
           const exSets = g.sets;
@@ -439,13 +520,23 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           const isDone = exSets.length > 0 && exCompleted === exSets.length;
           const isCurrent = i === currentExerciseIndex;
           return (
-                  <button
-                    onClick={() => setCustomAndStart(currentGroup.exercise.id, defaultRestTime)}
-                    className="w-full rounded-xl py-3 text-sm active:scale-95 transition-all"
-                    style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))", color: "hsl(var(--muted-foreground))" }}
-                  >
-                    Repos par défaut ({defaultRestTime >= 60 ? `${Math.floor(defaultRestTime / 60)}:${(defaultRestTime % 60).toString().padStart(2, "0")}` : `${defaultRestTime}s`})
-                  </button>
+            <button
+              key={g.exercise.id}
+              onClick={() => {
+                if (i === currentExerciseIndex) return;
+                setSlideDirection(i > currentExerciseIndex ? "left" : "right");
+                setTimeout(() => { setCurrentExerciseIndex(i); setSlideDirection(null); }, 150);
+              }}
+              className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold transition-all active:scale-95 ${isCurrent ? "text-[hsl(var(--text-white))]" : isDone ? "text-[hsl(var(--text-white))]" : "text-[hsl(var(--muted-foreground-dim))]"}`}
+              style={isCurrent
+                ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 2px 8px hsl(142 71% 45% / 0.3)" }
+                : isDone
+                  ? { backgroundColor: "hsl(142 71% 45% / 0.15)", border: "1px solid hsl(142 71% 45% / 0.3)" }
+                  : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }
+              }
+            >
+              {isDone ? <Check className="h-4 w-4" /> : i + 1}
+            </button>
           );
         })}
       </div>
@@ -457,7 +548,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         {currentGroup && (
           <>
             {/* Exercise header */}
-            <div className="mb-6">
+            <div className="mb-5">
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-[hsl(var(--text-white))] mb-1">{currentGroup.exercise.name}</h1>
@@ -477,12 +568,12 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <Zap className="h-3.5 w-3.5" style={{ color: "hsl(142 71% 45%)" }} />
-                    <p className="text-xs font-semibold" style={{ color: "hsl(142 71% 45%)" }}>Surcharge intelligente</p>
+                    <p className="text-xs font-semibold" style={{ color: "hsl(142 71% 45%)" }}>{t("workout_smart", lang)}</p>
                   </div>
-                    <div className="flex gap-2 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
+                  <div className="flex gap-2 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
                     <span className="flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />{sp.analysis.current1RM} kg</span>
                     <span>{Math.round(sp.analysis.totalVolumeLastSession)} kg</span>
-                    {sp.analysis.isPlateau && <span className="flex items-center gap-0.5" style={{ color: "hsl(0 72% 51%)" }}><AlertTriangle className="h-3 w-3" />Plateau</span>}
+                    {sp.analysis.isPlateau && <span className="flex items-center gap-0.5" style={{ color: "hsl(0 72% 51%)" }}><AlertTriangle className="h-3 w-3" />{t("workout_plateau", lang)}</span>}
                   </div>
                 </div>
                 <div className="flex gap-2 mb-2">
@@ -516,7 +607,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <div className="mb-4 rounded-xl p-5 text-center animate-scale-in" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(142 71% 45% / 0.2)" }}>
                 <div className="flex items-center justify-center gap-1.5 mb-1">
                   <Timer className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
-                  <p className="text-xs" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Repos</p>
+                  <p className="text-xs" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_rest", lang)}</p>
                 </div>
                 <p className="text-4xl font-bold font-mono" style={{ color: "hsl(142 71% 45%)" }}>{formatTimer(timer)}</p>
               </div>
@@ -527,22 +618,20 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(var(--overlay))", backdropFilter: "blur(8px)" }}>
                 <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", boxShadow: "0 24px 48px hsl(var(--shadow-heavy))" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <p className="font-semibold text-sm text-[hsl(var(--text-white))]">Temps de repos</p>
-                    <button onClick={() => setShowCustomTimer(null)} className="text-xs active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>Retour</button>
+                    <p className="font-semibold text-sm text-[hsl(var(--text-white))]">{t("workout_rest_time", lang)}</p>
+                    <button onClick={() => setShowCustomTimer(null)} className="text-xs active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>{t("workout_back_btn", lang)}</button>
                   </div>
                   <div className="grid grid-cols-4 gap-2 mb-3">
                     {[30, 60, 90, 120, 150, 180, 240, 300].map((sec) => (
                       <button key={sec} onClick={() => setCustomAndStart(currentGroup.exercise.id, sec)} className="rounded-xl py-3 text-center font-mono text-sm font-semibold active:scale-[0.95] transition-all"
                         style={defaultRestTime === sec ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)", color: "white" } : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))", color: "hsl(var(--inactive-btn-text-light))" }}
-                        onMouseEnter={(e) => { if (defaultRestTime !== sec) { e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)"; e.currentTarget.style.color = "hsl(142 71% 45%)"; } }}
-                        onMouseLeave={(e) => { if (defaultRestTime !== sec) { e.currentTarget.style.borderColor = "hsl(var(--inactive-btn-border))"; e.currentTarget.style.color = "hsl(var(--inactive-btn-text-light))"; } }}
                       >
                         {sec >= 60 ? `${Math.floor(sec / 60)}:${(sec % 60).toString().padStart(2, "0")}` : `${sec}s`}
                       </button>
                     ))}
                   </div>
                   <button onClick={() => setCustomAndStart(currentGroup.exercise.id, 0)} className="w-full rounded-xl py-3 text-sm active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))", color: "hsl(var(--muted-foreground))" }}>
-                    Pas de repos
+                    {t("workout_no_rest", lang)}
                   </button>
                 </div>
               </div>
@@ -550,33 +639,102 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Sets */}
             <div className="flex flex-col gap-2.5">
-              {currentGroup.sets.map((set, idx) => (
-                <div key={set.id} className={`flex items-center gap-3 rounded-2xl p-4 transition-all animate-scale-in ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`} style={{ animationDelay: `${idx * 0.05}s` }}>
-                  <span className="text-xs w-8 font-mono text-center" style={{ color: "hsl(var(--muted-foreground-dim))" }}>S{set.set_number}</span>
-                  <div className="flex-1 flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Poids ({unit})</label>
-                      <input type="text" inputMode="decimal" value={getDisplayValue(set, "weight")} onChange={(e) => handleSetInput(set.id, "weight", e.target.value)} onBlur={() => handleSetBlur(set.id, "weight")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
+              {currentGroup.sets.map((set, idx) => {
+                const lastSets = lastSessionSets[currentGroup.exercise.id];
+                const lastSet = lastSets?.find((s) => s.setNumber === set.set_number);
+                const weightDiff = lastSet ? Math.round((set.weight - lastSet.weight) * 10) / 10 : 0;
+                const repsDiff = lastSet ? set.reps - lastSet.reps : 0;
+                const hasComparison = lastSet !== undefined;
+
+                return (
+                  <div key={set.id} className={`flex items-center gap-3 rounded-2xl p-4 transition-all animate-scale-in ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`} style={{ animationDelay: `${idx * 0.05}s` }}>
+                    <span className="text-xs w-8 font-mono text-center" style={{ color: "hsl(var(--muted-foreground-dim))" }}>S{set.set_number}</span>
+                    <div className="flex-1 flex items-center gap-3">
+                      <div className="flex-1 relative">
+                        <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Poids ({unit})</label>
+                        <input type="text" inputMode="decimal" value={getDisplayValue(set, "weight")} onChange={(e) => handleSetInput(set.id, "weight", e.target.value)} onBlur={() => handleSetBlur(set.id, "weight")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
+                        {hasComparison && weightDiff > 0 && (
+                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{weightDiff}</span>
+                        )}
+                        {hasComparison && weightDiff < 0 && (
+                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51% / 0.15)", color: "hsl(0 72% 51%)" }}>{weightDiff}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 relative">
+                        <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_reps", lang)}</label>
+                        <input type="text" inputMode="numeric" value={getDisplayValue(set, "reps")} onChange={(e) => handleSetInput(set.id, "reps", e.target.value)} onBlur={() => handleSetBlur(set.id, "reps")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
+                        {hasComparison && repsDiff > 0 && (
+                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{repsDiff}</span>
+                        )}
+                        {hasComparison && repsDiff < 0 && (
+                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51% / 0.15)", color: "hsl(0 72% 51%)" }}>{repsDiff}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Reps</label>
-                      <input type="text" inputMode="numeric" value={getDisplayValue(set, "reps")} onChange={(e) => handleSetInput(set.id, "reps", e.target.value)} onBlur={() => handleSetBlur(set.id, "reps")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
-                    </div>
+                    <button
+                      onClick={() => {
+                        const wasCompleted = set.completed;
+                        updateSet(set.id, "completed", !set.completed);
+                        if (!wasCompleted) {
+                          triggerHaptic("success");
+                          setCompletedSetAnimations((prev) => ({ ...prev, [set.id]: true }));
+                          setTimeout(() => setCompletedSetAnimations((prev) => ({ ...prev, [set.id]: false })), 600);
+                          if (set.rest_sec > 0) openCustomTimer(currentGroup.exercise.id, set.rest_sec);
+                          checkForPR(currentGroup.exercise.id, currentGroup.exercise.name);
+                        }
+                      }}
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center active:scale-95 transition-all ${set.completed ? "text-[hsl(var(--text-white))]" : "border border-[hsl(var(--card-border))] text-[hsl(var(--text-white-40))]"}`}
+                      style={set.completed ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)" } : {}}
+                    >
+                      <Check className="h-5 w-5" />
+                    </button>
                   </div>
-                  <button onClick={() => { updateSet(set.id, "completed", !set.completed); if (!set.completed && set.rest_sec > 0) openCustomTimer(currentGroup.exercise.id, set.rest_sec); if (!set.completed) checkForPR(currentGroup.exercise.id, currentGroup.exercise.name); }} className={`w-12 h-12 rounded-xl flex items-center justify-center active:scale-95 transition-all ${set.completed ? "text-[hsl(var(--text-white))]" : "border border-[hsl(var(--card-border))] text-[hsl(var(--text-white-40))]"}`}
-                    style={set.completed ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)" } : {}}
-                  >
-                    <Check className="h-5 w-5" />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {/* Plate calculator */}
+            {currentGroup.sets.some((s) => s.completed) && (
+              <div className="mt-3 rounded-xl overflow-hidden" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+                <button
+                  onClick={() => setShowPlates(showPlates === currentGroup.exercise.id ? null : currentGroup.exercise.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-xs font-medium active:scale-[0.98] transition-all"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Dumbbell className="h-3.5 w-3.5" />
+                    {t("workout_plates", lang)}
+                  </div>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showPlates === currentGroup.exercise.id ? "rotate-90" : ""}`} />
+                </button>
+                {showPlates === currentGroup.exercise.id && (() => {
+                  const lastCompleted = [...currentGroup.sets].reverse().find((s) => s.completed);
+                  if (!lastCompleted) return null;
+                  const { plates } = calculatePlates(lastCompleted.weight);
+                  return (
+                    <div className="px-4 pb-3 flex flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 text-xs" style={{ color: "hsl(var(--muted-foreground))" }}>
+                        <span className="font-semibold text-[hsl(var(--text-white))]">{displayWeight(lastCompleted.weight)}</span>
+                        <span>=</span>
+                        <span className="px-1.5 py-0.5 rounded" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>{t("workout_bar", lang)}</span>
+                      </div>
+                      {plates.map((p) => (
+                        <div key={p.size} className="flex items-center gap-1">
+                          <span className="px-2 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)", color: "hsl(142 71% 45%)" }}>{p.size}</span>
+                          <span className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>×{p.count * 2}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* Add set */}
             {!isReadOnly && (
               <button onClick={() => addSet(currentGroup.exercise.id)} className="mt-4 w-full rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-all" style={{ backgroundColor: "hsl(var(--card))", border: "1px dashed hsl(var(--inactive-btn-border))", color: "hsl(var(--muted-foreground))" }}>
                 <Plus className="h-4 w-4" />
-                Ajouter une série
+                {t("workout_add_set", lang)}
               </button>
             )}
           </>
@@ -591,7 +749,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <ChevronLeft className="h-5 w-5 text-[hsl(var(--text-white))]" />
             </button>
             <div className="flex-1">
-              <ProgressBar value={completedSets} max={Math.max(totalSets, 1)} label={`${completedSets}/${totalSets} séries`} />
+              <ProgressBar value={completedSets} max={Math.max(totalSets, 1)} label={`${completedSets}/${totalSets} ${t("workout_sets_completed", lang)}`} />
             </div>
             <button onClick={() => navigateExercise("next")} disabled={currentExerciseIndex >= groups.length - 1} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
               <ChevronRight className="h-5 w-5 text-[hsl(var(--text-white))]" />
@@ -602,7 +760,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <List className="h-4 w-4" />
             </button>
             <button onClick={finishWorkout} className="flex-1 rounded-xl px-6 py-4 text-base font-bold text-[hsl(var(--text-white))] active:scale-[0.98] transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: completedSets === totalSets && totalSets > 0 ? "0 0 32px hsl(142 71% 45% / 0.4)" : "0 4px 16px hsl(142 71% 45% / 0.3)" }}>
-              {completedSets === totalSets && totalSets > 0 ? "✓ Finir la séance" : "Terminer la séance"}
+              {completedSets === totalSets && totalSets > 0 ? `✓ ${t("workout_finish_done", lang)}` : t("workout_finish", lang)}
             </button>
           </div>
         </div>
@@ -618,7 +776,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <Trophy className="h-5 w-5" style={{ color: "hsl(45 93% 47%)" }} />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>Nouveau record personnel !</p>
+              <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>{t("dashboard_new_pr", lang)}</p>
               <p className="text-xs" style={{ color: "hsl(45 93% 47% / 0.7)" }}>{prInfo.exercise} — {prInfo.oneRM} kg (1RM)</p>
             </div>
             <button onClick={() => setShowPR(false)} className="p-1 rounded-lg" style={{ color: "hsl(45 93% 47% / 0.5)" }}>
@@ -653,7 +811,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* Post-workout summary */}
+      {/* Post-workout summary - ENHANCED */}
       {showSummary && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(var(--overlay))", backdropFilter: "blur(12px)" }}>
           <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 pb-8 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", boxShadow: "0 24px 48px hsl(var(--shadow-heavy))" }}>
@@ -663,27 +821,60 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold text-[hsl(var(--text-white))] mb-1">Séance terminée !</h2>
-              <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>Bien joué, continue comme ça 💪</p>
+              <h2 className="text-2xl font-bold text-[hsl(var(--text-white))] mb-1">{t("workout_summary_title", lang)}</h2>
+              <p className="text-sm" style={{ color: "hsl(var(--muted-foreground))" }}>{t("workout_summary_subtitle", lang)}</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
+                <p className="text-2xl font-bold text-[hsl(var(--text-white))]">{formatElapsed(elapsedSeconds)}</p>
+                <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_summary_duration", lang)}</p>
+              </div>
               <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
                 <p className="text-2xl font-bold text-[hsl(var(--text-white))]">{completedSets}</p>
-                <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Séries</p>
+                <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_summary_sets", lang)}</p>
               </div>
               <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
-                <p className="text-2xl font-bold text-[hsl(var(--text-white))]">{groups.length}</p>
-                <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Exercices</p>
-              </div>
-              <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
-                <p className="text-2xl font-bold text-[hsl(var(--text-white))]">{Math.round(groups.reduce((acc, g) => acc + g.sets.reduce((a, s) => a + s.weight * s.reps, 0), 0))}</p>
-                <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Volume (kg)</p>
+                <p className="text-2xl font-bold text-[hsl(var(--text-white))]">{Math.round(currentVolume)}</p>
+                <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_summary_volume", lang)}</p>
               </div>
             </div>
 
+            {/* Volume comparison */}
+            {lastSessionVolume > 0 && (
+              <div className="mb-4 rounded-xl p-4" style={{ backgroundColor: volumeDiff >= 0 ? "hsl(142 71% 45% / 0.08)" : "hsl(0 72% 51% / 0.08)", border: `1px solid ${volumeDiff >= 0 ? "hsl(142 71% 45% / 0.2)" : "hsl(0 72% 51% / 0.2)"}` }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className={`h-4 w-4 ${volumeDiff >= 0 ? "rotate-0" : "rotate-180"}`} style={{ color: volumeDiff >= 0 ? "hsl(142 71% 45%)" : "hsl(0 72% 51%)" }} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: volumeDiff >= 0 ? "hsl(142 71% 45%)" : "hsl(0 72% 51%)" }}>
+                        {volumeDiff >= 0 ? t("workout_summary_better_than_last", lang) : lang === "en" ? "Below last session" : "En dessous de la dernière"}
+                      </p>
+                      <p className="text-xs" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_summary_vs_last", lang)}</p>
+                    </div>
+                  </div>
+                  <span className="text-lg font-bold" style={{ color: volumeDiff >= 0 ? "hsl(142 71% 45%)" : "hsl(0 72% 51%)" }}>
+                    {volumeDiff >= 0 ? "+" : ""}{volumeDiff} kg
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* PRs broken */}
+            {newPRs.length > 0 && (
+              <div className="mb-4 rounded-xl p-4" style={{ backgroundColor: "hsl(45 93% 47% / 0.08)", border: "1px solid hsl(45 93% 47% / 0.2)" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy className="h-4 w-4" style={{ color: "hsl(45 93% 47%)" }} />
+                  <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>{newPRs.length} {newPRs.length > 1 ? (lang === "en" ? "PRs broken!" : "Records battus !") : (lang === "en" ? "PR broken!" : "Record battu !")}</p>
+                </div>
+                {newPRs.map((pr, i) => (
+                  <p key={i} className="text-xs font-medium" style={{ color: "hsl(45 93% 47% / 0.8)" }}>{pr}</p>
+                ))}
+              </div>
+            )}
+
             <button onClick={() => router.push("/programs")} className="w-full rounded-xl px-6 py-4 text-base font-bold text-[hsl(var(--text-white))] active:scale-[0.98] transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)" }}>
-              Retour aux programmes
+              {t("workout_summary_back_programs", lang)}
             </button>
           </div>
         </div>
