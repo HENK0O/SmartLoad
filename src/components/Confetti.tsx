@@ -28,7 +28,7 @@ function generateParticles(count: number): Particle[] {
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
     delay: Math.random() * 1.5,
     duration: 4 + Math.random() * 2,
-    size: 4 + Math.random() * 8,
+    size: 6 + Math.random() * 14,
     rotation: Math.random() * 360,
   }));
 }
@@ -44,7 +44,7 @@ export default function Confetti({ active, duration = 3000 }: ConfettiProps) {
 
   useEffect(() => {
     if (active) {
-      setParticles(generateParticles(50));
+      setParticles(generateParticles(150));
       setVisible(true);
       const timer = setTimeout(() => setVisible(false), duration);
       return () => clearTimeout(timer);
@@ -78,7 +78,7 @@ export default function Confetti({ active, duration = 3000 }: ConfettiProps) {
             opacity: 1;
           }
           100% {
-            transform: translateY(100vh) rotate(720deg) scale(0.5);
+            transform: translateY(130vh) rotate(720deg) scale(0.5);
             opacity: 0;
           }
         }
