@@ -26,6 +26,10 @@ import {
   MoreHorizontal,
   Check,
   ArrowRight,
+  Zap,
+  TrendingUp,
+  Trophy,
+  Play,
 } from "lucide-react";
 
 interface Program {
@@ -76,6 +80,10 @@ export default function ProgramsPage() {
   const [saveTemplateConfirm, setSaveTemplateConfirm] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState("");
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
+  const [inProgressWorkout, setInProgressWorkout] = useState<{ id: string; programName: string; programId: string | null } | null>(null);
+  const [weeklyStats, setWeeklyStats] = useState({ count: 0, volume: 0, sessions: 0 });
+  const [lastWorkout, setLastWorkout] = useState<{ name: string; date: string; sets: number } | null>(null);
+  const [bestPR, setBestPR] = useState<{ exercise: string; oneRM: number } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -87,7 +95,8 @@ export default function ProgramsPage() {
     loadHistory();
     loadUnit();
     loadTemplates();
-  }, [user, activeTab]);
+    loadDashboardData();
+  }, [user]);
 
   async function loadPrograms() {
     const { data } = await supabase
@@ -116,6 +125,76 @@ export default function ProgramsPage() {
       .eq("id", user!.id)
       .single();
     if (data) setUnit(data.unit as "kg" | "lbs");
+  }
+
+  async function loadDashboardData() {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const { data: allWorkouts } = await supabase
+      .from("workouts")
+      .select("id, status, started_at, completed_at, program_id, programs(name), workout_sets(reps, weight, completed, exercise_id, exercises(name))")
+      .eq("user_id", user!.id)
+      .order("started_at", { ascending: false });
+
+    if (!allWorkouts) return;
+
+    const completedWorkouts = allWorkouts.filter((w) => w.status === "completed");
+
+    const inProgress = allWorkouts.find((w) => w.status === "in_progress");
+    if (inProgress) {
+      const progs = inProgress.programs as unknown as { name: string } | null | undefined;
+      setInProgressWorkout({
+        id: inProgress.id,
+        programName: progs?.name ?? "Séance libre",
+        programId: inProgress.program_id,
+      });
+    }
+
+    const weekWorkouts = completedWorkouts.filter((w) => new Date(w.started_at) >= startOfWeek);
+    let weekVolume = 0;
+    for (const w of weekWorkouts) {
+      for (const s of (w.workout_sets || [])) {
+        if (s.completed) weekVolume += s.weight * s.reps;
+      }
+    }
+    setWeeklyStats({ count: weekWorkouts.length, volume: Math.round(weekVolume), sessions: weekWorkouts.length });
+
+    const last = completedWorkouts[0];
+    if (last) {
+      const sets = last.workout_sets || [];
+      const timeDiff = now.getTime() - new Date(last.started_at).getTime();
+      const daysAgo = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+      let timeLabel = "";
+      if (daysAgo === 0) timeLabel = t("dashboard_today", lang);
+      else if (daysAgo === 1) timeLabel = t("dashboard_yesterday", lang);
+      else timeLabel = t("dashboard_days_ago", lang).replace("{days}", String(daysAgo));
+
+      const lastProgs = last.programs as unknown as { name: string } | null | undefined;
+      setLastWorkout({
+        name: lastProgs?.name ?? "Séance libre",
+        date: timeLabel,
+        sets: sets.length,
+      });
+    }
+
+    let bestExercise = "";
+    let bestOneRM = 0;
+    for (const w of completedWorkouts.slice(0, 10)) {
+      for (const s of (w.workout_sets || [])) {
+        if (s.completed && s.reps > 0 && s.weight > 0) {
+          const oneRM = s.weight * (1 + s.reps / 30);
+          if (oneRM > bestOneRM) {
+            bestOneRM = Math.round(oneRM * 10) / 10;
+            const ex = s.exercises as unknown as { name: string } | null | undefined;
+            bestExercise = ex?.name ?? "";
+          }
+        }
+      }
+    }
+    if (bestExercise) setBestPR({ exercise: bestExercise, oneRM: bestOneRM });
   }
 
   function displayWeight(kg: number): string {
@@ -334,7 +413,7 @@ export default function ProgramsPage() {
       </button>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3 pr-12 md:pr-0">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -354,19 +433,17 @@ export default function ProgramsPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/workout"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-[hsl(var(--primary-foreground))] transition-all active:scale-95"
-            style={{
-              background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
-              boxShadow: "0 4px 16px hsl(var(--primary-glow))",
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            {t("programs_session", lang)}
-          </Link>
-        </div>
+        <Link
+          href="/workout"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-[hsl(var(--primary-foreground))] transition-all active:scale-95"
+          style={{
+            background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
+            boxShadow: "0 4px 16px hsl(var(--primary-glow))",
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          {t("programs_session", lang)}
+        </Link>
       </div>
 
       {/* Error banner */}
@@ -382,6 +459,83 @@ export default function ProgramsPage() {
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+      )}
+
+      {/* Dashboard Hero */}
+      {inProgressWorkout ? (
+        <div className="mb-5 rounded-2xl p-5 animate-slide-up" style={{ background: "linear-gradient(135deg, hsl(142 71% 45% / 0.15), hsl(142 71% 35% / 0.08))", border: "1px solid hsl(142 71% 45% / 0.25)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: "hsl(142 71% 45%)" }} />
+            <p className="text-xs font-semibold" style={{ color: "hsl(142 71% 45%)" }}>{t("dashboard_continue", lang)}</p>
+          </div>
+          <p className="text-lg font-bold text-[hsl(var(--foreground))] mb-1">{inProgressWorkout.programName}</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">{lang === "en" ? "Started earlier" : "Commencée plus tôt"}</p>
+          <Link
+            href={`/workout/${inProgressWorkout.id}`}
+            className="w-full rounded-xl py-3.5 text-sm font-bold text-[hsl(var(--primary-foreground))] flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+            style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)" }}
+          >
+            <Play className="h-4 w-4" />
+            {t("dashboard_resume", lang)}
+          </Link>
+        </div>
+      ) : (
+        <div className="mb-5 rounded-2xl p-5 animate-slide-up" style={{ background: "linear-gradient(135deg, hsl(142 71% 45% / 0.12), hsl(142 71% 35% / 0.05))", border: "1px solid hsl(142 71% 45% / 0.2)" }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
+            <p className="text-xs font-semibold" style={{ color: "hsl(142 71% 45%)" }}>{t("dashboard_quick_start", lang)}</p>
+          </div>
+          <p className="text-lg font-bold text-[hsl(var(--foreground))] mb-4">{t("dashboard_start", lang)}</p>
+          <Link
+            href="/workout"
+            className="w-full rounded-xl py-3.5 text-sm font-bold text-[hsl(var(--primary-foreground))] flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+            style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)" }}
+          >
+            <Play className="h-4 w-4" />
+            {t("dashboard_start", lang)}
+          </Link>
+        </div>
+      )}
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-2.5 mb-5 animate-slide-up stagger-1">
+        <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Calendar className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
+          </div>
+          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{weeklyStats.sessions}</p>
+          <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("dashboard_this_week", lang)}</p>
+        </div>
+        <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <TrendingUp className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
+          </div>
+          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{weeklyStats.volume > 0 ? (weeklyStats.volume >= 1000 ? `${(weeklyStats.volume / 1000).toFixed(1)}k` : weeklyStats.volume) : "—"}</p>
+          <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("dashboard_volume", lang)}</p>
+        </div>
+        <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Trophy className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
+          </div>
+          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{bestPR ? bestPR.oneRM : "—"}</p>
+          <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>1RM {unit}</p>
+        </div>
+      </div>
+
+      {/* Last workout */}
+      {lastWorkout && (
+        <div className="mb-5 rounded-xl p-3.5 flex items-center justify-between animate-slide-up stagger-2" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)" }}>
+              <Dumbbell className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[hsl(var(--foreground))]">{lastWorkout.name}</p>
+              <p className="text-xs" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{lastWorkout.date} · {lastWorkout.sets} {lastWorkout.sets > 1 ? t("programs_series_pl", lang) : t("programs_series", lang)}</p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4" style={{ color: "hsl(var(--muted-foreground-dim))" }} />
         </div>
       )}
 

@@ -57,7 +57,7 @@ export default function Confetti({ active, duration = 3000 }: ConfettiProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 pointer-events-none overflow-hidden"
+      className="fixed inset-0 z-[9999] pointer-events-none overflow-hidden"
       style={{
         opacity: fading ? 0 : 1,
         transition: "opacity 0.8s ease-out",
