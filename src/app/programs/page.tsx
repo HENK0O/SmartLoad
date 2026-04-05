@@ -30,6 +30,7 @@ import {
   TrendingUp,
   Trophy,
   Play,
+  Flame,
 } from "lucide-react";
 
 interface Program {
@@ -84,6 +85,7 @@ export default function ProgramsPage() {
   const [weeklyStats, setWeeklyStats] = useState({ count: 0, volume: 0, sessions: 0 });
   const [lastWorkout, setLastWorkout] = useState<{ name: string; date: string; sets: number } | null>(null);
   const [bestPR, setBestPR] = useState<{ exercise: string; oneRM: number } | null>(null);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -195,6 +197,27 @@ export default function ProgramsPage() {
       }
     }
     if (bestExercise) setBestPR({ exercise: bestExercise, oneRM: bestOneRM });
+
+    let streakCount = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 365; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const nextDate = new Date(checkDate);
+      nextDate.setDate(checkDate.getDate() + 1);
+      const dayWorkouts = completedWorkouts.filter((w) => {
+        const d = new Date(w.started_at);
+        return d >= checkDate && d < nextDate;
+      });
+      if (dayWorkouts.length > 0) {
+        streakCount++;
+      } else {
+        if (i === 0) continue;
+        break;
+      }
+    }
+    setStreak(streakCount);
   }
 
   function displayWeight(kg: number): string {
@@ -499,7 +522,7 @@ export default function ProgramsPage() {
       )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-3 gap-2.5 mb-5 animate-slide-up stagger-1">
+      <div className="grid grid-cols-4 gap-2.5 mb-5 animate-slide-up stagger-1">
         <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
           <div className="flex items-center justify-center gap-1 mb-1">
             <Calendar className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
@@ -520,6 +543,13 @@ export default function ProgramsPage() {
           </div>
           <p className="text-xl font-bold text-[hsl(var(--foreground))]">{bestPR ? bestPR.oneRM : "—"}</p>
           <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>1RM {unit}</p>
+        </div>
+        <div className="rounded-xl p-3 text-center relative" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <span className="text-sm">🔥</span>
+          </div>
+          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{streak}</p>
+          <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("dashboard_streak", lang)}</p>
         </div>
       </div>
 
