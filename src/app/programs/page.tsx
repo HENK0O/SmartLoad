@@ -328,7 +328,7 @@ export default function ProgramsPage() {
       <button
         onClick={() => setLang(lang === "fr" ? "en" : "fr")}
         className="absolute top-0 right-0 z-30 p-2 rounded-xl active:scale-95 transition-all md:right-0 md:top-1"
-        style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)" }}
+        style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}
       >
         <LangFlag lang={lang} size={20} />
       </button>
@@ -343,7 +343,7 @@ export default function ProgramsPage() {
               boxShadow: "0 4px 16px hsl(var(--primary-glow))",
             }}
           >
-            <Dumbbell className="h-5 w-5 text-white" />
+            <Dumbbell className="h-5 w-5 text-[hsl(var(--primary-foreground))]" />
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-[hsl(var(--foreground))]">
@@ -357,7 +357,7 @@ export default function ProgramsPage() {
         <div className="flex items-center gap-2">
           <Link
             href="/workout"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-[hsl(var(--primary-foreground))] transition-all active:scale-95"
             style={{
               background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
               boxShadow: "0 4px 16px hsl(var(--primary-glow))",
@@ -399,7 +399,7 @@ export default function ProgramsPage() {
             onClick={() => setActiveTab(tab.key)}
             className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-95 ${
               activeTab === tab.key
-                ? "text-white shadow-lg"
+                ? "text-[hsl(var(--primary-foreground))] shadow-lg"
                 : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
             }`}
             style={
@@ -577,7 +577,7 @@ export default function ProgramsPage() {
                     <button
                       onClick={createProgram}
                       disabled={!newName.trim()}
-                      className="flex-1 rounded-xl px-6 py-3.5 font-semibold text-white shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+                      className="flex-1 rounded-xl px-6 py-3.5 font-semibold text-[hsl(var(--primary-foreground))] shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
                       style={{
                         background:
                           "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
@@ -692,7 +692,7 @@ export default function ProgramsPage() {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => createProgramFromTemplate(tmpl.id)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-white active:scale-95 transition-all"
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-[hsl(var(--primary-foreground))] active:scale-95 transition-all"
                         style={{
                           background:
                             "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
@@ -918,7 +918,7 @@ export default function ProgramsPage() {
           <div
             className="absolute inset-0"
             style={{
-              backgroundColor: "hsl(220 15% 6% / 0.8)",
+              backgroundColor: "hsl(var(--overlay))",
               backdropFilter: "blur(8px)",
             }}
             onClick={() => {
@@ -931,7 +931,7 @@ export default function ProgramsPage() {
             style={{
               backgroundColor: "hsl(var(--card))",
               borderColor: "hsl(var(--card-border))",
-              boxShadow: "0 24px 48px hsl(0 0% 0% / 0.4)",
+              boxShadow: "0 24px 48px hsl(var(--shadow-heavy))",
             }}
           >
             <div className="flex items-center gap-2 mb-2">
@@ -976,7 +976,7 @@ export default function ProgramsPage() {
                   saveTemplateConfirm && saveAsTemplate(saveTemplateConfirm)
                 }
                 disabled={!templateName.trim()}
-                className="flex-1 rounded-xl px-4 py-3.5 text-sm font-semibold text-white shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+                className="flex-1 rounded-xl px-4 py-3.5 text-sm font-semibold text-[hsl(var(--primary-foreground))] shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
                 style={{
                   background:
                     "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",

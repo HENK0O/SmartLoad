@@ -27,7 +27,7 @@ export default function ProgressBar({
     <div className={cn("w-full", className)}>
       {(label || showPercentage) && (
         <div className="flex items-center justify-between mb-2">
-          {label && <span className="text-sm text-white/70">{label}</span>}
+          {label && <span className="text-sm" style={{ color: "hsl(var(--text-white-70))" }}>{label}</span>}
           {showPercentage && (
             <span
               className="text-sm font-semibold"
@@ -40,7 +40,7 @@ export default function ProgressBar({
       )}
       <div
         className={cn("w-full rounded-full overflow-hidden", heightMap[size])}
-        style={{ backgroundColor: "hsl(220 15% 14%)" }}
+        style={{ backgroundColor: "hsl(var(--card-border))" }}
       >
         <div
           className={cn(

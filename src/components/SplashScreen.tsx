@@ -29,7 +29,7 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
       }`}
       style={{
         background:
-          "radial-gradient(ellipse at 50% 30%, hsl(142 71% 45% / 0.12) 0%, hsl(220 15% 6%) 70%)",
+          "radial-gradient(ellipse at 50% 30%, hsl(142 71% 45% / 0.12) 0%, hsl(var(--background)) 70%)",
       }}
     >
       <div className="absolute inset-0 overflow-hidden">
@@ -83,19 +83,19 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
               <rect x="6.5" y="10" width="11" height="4" rx="1" />
             </svg>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-white">
+          <h1 className="text-4xl font-bold tracking-tight" style={{ color: "hsl(var(--text-white))" }}>
             Smart<span style={{ color: "hsl(142 71% 45%)" }}>Load</span>
           </h1>
         </div>
 
-        <p className="text-sm text-white/50 tracking-wide">
+        <p className="text-sm tracking-wide" style={{ color: "hsl(var(--text-white-50))" }}>
           Train smarter. Progress faster.
         </p>
 
         <div className="w-48 mt-4">
           <div
             className="h-1 rounded-full overflow-hidden"
-            style={{ backgroundColor: "hsl(220 15% 9%)" }}
+            style={{ backgroundColor: "hsl(var(--card))" }}
           >
             <div
               className="h-full rounded-full transition-all duration-100 ease-linear"

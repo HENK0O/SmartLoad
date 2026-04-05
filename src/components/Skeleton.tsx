@@ -8,7 +8,7 @@ function Shimmer() {
       className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite]"
       style={{
         background:
-          "linear-gradient(90deg, transparent, hsl(220 15% 14% / 0.6), transparent)",
+          "linear-gradient(90deg, transparent, hsl(var(--card-border) / 0.6), transparent)",
       }}
     />
   );
@@ -22,7 +22,7 @@ export function Skeleton({ className }: SkeletonProps) {
   return (
     <div
       className={cn("relative overflow-hidden rounded-lg", className)}
-      style={{ backgroundColor: "hsl(220 15% 9%)" }}
+      style={{ backgroundColor: "hsl(var(--card))" }}
     >
       <Shimmer />
     </div>
@@ -41,8 +41,8 @@ export function CardSkeleton({ className }: CardSkeletonProps) {
         className
       )}
       style={{
-        backgroundColor: "hsl(220 15% 9%)",
-        border: "1px solid hsl(220 15% 14%)",
+        backgroundColor: "hsl(var(--card))",
+        border: "1px solid hsl(var(--card-border))",
       }}
     >
       <div className="flex items-start gap-4">
@@ -74,8 +74,8 @@ export function ListSkeleton({ count = 5, className }: ListSkeletonProps) {
           key={i}
           className="relative overflow-hidden rounded-2xl p-4"
           style={{
-            backgroundColor: "hsl(220 15% 9%)",
-            border: "1px solid hsl(220 15% 14%)",
+            backgroundColor: "hsl(var(--card))",
+            border: "1px solid hsl(var(--card-border))",
           }}
         >
           <div className="flex items-center gap-3">

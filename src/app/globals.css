@@ -7,6 +7,8 @@
     --card: 220 15% 9%;
     --card-border: 220 15% 14%;
     --card-foreground: 210 40% 98%;
+    --card-bg-muted: 220 15% 11%;
+    --card-bg-deep: 220 15% 6%;
     --popover: 220 15% 9%;
     --popover-foreground: 210 40% 98%;
     --primary: 142 71% 45%;
@@ -16,15 +18,32 @@
     --secondary-foreground: 210 40% 98%;
     --muted: 220 10% 40%;
     --muted-foreground: 220 10% 55%;
+    --muted-foreground-dim: 220 10% 35%;
+    --muted-foreground-dimmer: 220 10% 45%;
+    --icon-muted: 220 15% 50%;
     --accent: 220 15% 12%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 14%;
     --input: 220 15% 12%;
+    --input-bg: 220 15% 11%;
     --ring: 142 71% 45%;
     --radius: 0.875rem;
     --nav-height: 72px;
+    --overlay: 220 15% 6% / 0.7;
+    --shadow-heavy: 0 0% 0% / 0.4;
+    --text-white: 210 40% 98%;
+    --text-white-70: 210 40% 98% / 0.7;
+    --text-white-60: 210 40% 98% / 0.6;
+    --text-white-50: 210 40% 98% / 0.5;
+    --text-white-40: 210 40% 98% / 0.4;
+    --text-white-30: 210 40% 98% / 0.3;
+    --text-white-20: 210 40% 98% / 0.2;
+    --inactive-btn-bg: 220 15% 11%;
+    --inactive-btn-border: 220 15% 16%;
+    --inactive-btn-text: 220 15% 60%;
+    --inactive-btn-text-light: 220 15% 75%;
   }
 
   .light {
@@ -33,6 +52,8 @@
     --card: 0 0% 100%;
     --card-border: 220 15% 90%;
     --card-foreground: 220 15% 10%;
+    --card-bg-muted: 220 15% 96%;
+    --card-bg-deep: 220 15% 93%;
     --popover: 0 0% 100%;
     --popover-foreground: 220 15% 10%;
     --primary: 142 71% 45%;
@@ -42,13 +63,30 @@
     --secondary-foreground: 220 15% 10%;
     --muted: 220 10% 55%;
     --muted-foreground: 220 10% 45%;
+    --muted-foreground-dim: 220 10% 65%;
+    --muted-foreground-dimmer: 220 10% 75%;
+    --icon-muted: 220 10% 50%;
     --accent: 220 15% 95%;
     --accent-foreground: 220 15% 10%;
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 90%;
     --input: 220 15% 92%;
+    --input-bg: 220 15% 96%;
     --ring: 142 71% 45%;
+    --overlay: 0 0% 0% / 0.3;
+    --shadow-heavy: 0 0% 0% / 0.08;
+    --text-white: 220 15% 10%;
+    --text-white-70: 220 15% 10% / 0.7;
+    --text-white-60: 220 15% 10% / 0.6;
+    --text-white-50: 220 15% 10% / 0.5;
+    --text-white-40: 220 15% 10% / 0.4;
+    --text-white-30: 220 15% 10% / 0.3;
+    --text-white-20: 220 15% 10% / 0.2;
+    --inactive-btn-bg: 220 15% 93%;
+    --inactive-btn-border: 220 15% 85%;
+    --inactive-btn-text: 220 10% 50%;
+    --inactive-btn-text-light: 220 10% 65%;
   }
 }
 

@@ -72,8 +72,8 @@ export default function AnalyticsPage() {
 
   if (loading || !user) return <p className="p-6">Chargement...</p>;
 
-  const chartTheme = { grid: { stroke: "rgb(38, 38, 38)" }, text: { fill: "rgb(115, 115, 115)" } };
-  const tooltipStyle = { backgroundColor: "rgb(23, 23, 23)", border: "1px solid rgb(38, 38, 38)", borderRadius: "12px", color: "rgb(250, 250, 250)" };
+  const chartTheme = { grid: { stroke: "hsl(var(--card-border))" }, text: { fill: "hsl(var(--muted-foreground))" } };
+  const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", borderRadius: "12px", color: "hsl(var(--text-white))" };
 
   return (
     <main className="flex min-h-screen flex-col p-5 pb-24">
@@ -174,7 +174,7 @@ export default function AnalyticsPage() {
                     <YAxis stroke={chartTheme.text.fill} fontSize={10} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: unknown, name: unknown) => { const n = name as string; const v = value as number; if (n === "oneRM") return [`${v} kg`, "1RM"]; if (n === "weight") return [`${v} kg`, "Poids"]; return [v, n]; }} />
                     <Line type="monotone" dataKey="oneRM" stroke="#22c55e" strokeWidth={2} dot={{ fill: "#22c55e", r: 3 }} name="1RM" />
-                    <Line type="monotone" dataKey="weight" stroke="rgb(115, 115, 115)" strokeWidth={1.5} dot={{ fill: "rgb(115, 115, 115)", r: 2 }} strokeDasharray="5 5" name="Poids" />
+                    <Line type="monotone" dataKey="weight" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} dot={{ fill: "hsl(var(--muted-foreground))", r: 2 }} strokeDasharray="5 5" name="Poids" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

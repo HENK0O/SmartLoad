@@ -64,10 +64,10 @@ export default function AuthForm() {
             <rect x="6.5" y="10" width="11" height="4" rx="1" />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-white">
+        <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--text-white))" }}>
           {isSignUp ? t("auth_create", lang) : t("auth_welcome", lang)}
         </h1>
-        <p className="mt-1 text-sm text-white/50">
+        <p className="mt-1 text-sm" style={{ color: "hsl(var(--text-white-50))" }}>
           {isSignUp ? t("auth_signup_desc", lang) : t("auth_signin_desc", lang)}
         </p>
       </div>
@@ -81,7 +81,7 @@ export default function AuthForm() {
 
         <div className="space-y-3">
           <div className="relative">
-            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "hsl(var(--text-white-30))" }} />
             <input
               type="email"
               value={email}
@@ -89,15 +89,15 @@ export default function AuthForm() {
               placeholder={t("auth_email", lang)}
               required
               autoComplete="email"
-              className="w-full min-h-12 rounded-xl pl-11 pr-4 text-sm text-white placeholder:text-white/30 outline-none transition-all"
-              style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }}
+              className="w-full min-h-12 rounded-xl pl-11 pr-4 text-sm outline-none transition-all placeholder:text-[hsl(var(--text-white-30))]"
+              style={{ backgroundColor: "hsl(var(--input-bg))", border: "1px solid hsl(var(--card-border))", color: "hsl(var(--text-white))" }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
-              onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(220 15% 16%)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--card-border))")}
             />
           </div>
 
           <div className="relative">
-            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "hsl(var(--text-white-30))" }} />
             <input
               type="password"
               value={password}
@@ -105,10 +105,10 @@ export default function AuthForm() {
               placeholder={t("auth_password", lang)}
               required
               autoComplete={isSignUp ? "new-password" : "current-password"}
-              className="w-full min-h-12 rounded-xl pl-11 pr-4 text-sm text-white placeholder:text-white/30 outline-none transition-all"
-              style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }}
+              className="w-full min-h-12 rounded-xl pl-11 pr-4 text-sm outline-none transition-all placeholder:text-[hsl(var(--text-white-30))]"
+              style={{ backgroundColor: "hsl(var(--input-bg))", border: "1px solid hsl(var(--card-border))", color: "hsl(var(--text-white))" }}
               onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
-              onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(220 15% 16%)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--card-border))")}
             />
           </div>
         </div>
@@ -116,8 +116,8 @@ export default function AuthForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full min-h-12 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
-          style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)" }}
+          className="w-full min-h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+          style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)", color: "white" }}
         >
           {loading ? (
             <>

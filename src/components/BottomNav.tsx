@@ -30,17 +30,17 @@ export default function BottomNav() {
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 border-t"
       style={{
-        backgroundColor: "hsl(220 15% 9% / 0.8)",
+        backgroundColor: "hsl(var(--card) / 0.8)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
-        borderColor: "hsl(220 15% 14%)",
+        borderColor: "hsl(var(--card-border))",
       }}
     >
       <div className="flex items-center justify-around max-w-lg mx-auto px-2 pt-2 pb-6">
         {navItems.map(({ labelKey, href, icon: Icon }) => {
           const active = isActive(href);
           const activeColor = "hsl(142 71% 45%)";
-          const inactiveColor = "hsl(220 15% 50%)";
+          const inactiveColor = "hsl(var(--icon-muted))";
 
           return (
             <Link
@@ -61,7 +61,7 @@ export default function BottomNav() {
               <span
                 className={cn(
                   "text-[10px] font-medium transition-colors duration-200",
-                  active ? "text-green-400" : "text-white/40"
+                  active ? "text-green-400" : "text-[hsl(var(--text-white-40))]"
                 )}
               >
                 {t(labelKey, lang)}

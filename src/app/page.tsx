@@ -42,7 +42,7 @@ export default function Home() {
       <button
         onClick={() => setLang(lang === "fr" ? "en" : "fr")}
         className="absolute top-4 right-4 z-20 p-2.5 rounded-xl active:scale-95 transition-all"
-        style={{ backgroundColor: "hsl(220 15% 9% / 0.8)", border: "1px solid hsl(220 15% 14%)", backdropFilter: "blur(12px)" }}
+        style={{ backgroundColor: "hsl(var(--card) / 0.8)", border: "1px solid hsl(var(--card-border))", backdropFilter: "blur(12px)" }}
       >
         <LangFlag lang={lang} size={20} />
       </button>
@@ -81,10 +81,10 @@ export default function Home() {
                 <rect x="6.5" y="10" width="11" height="4" rx="1" />
               </svg>
             </div>
-            <h1 className="text-6xl font-black tracking-tight text-white mb-2">
+            <h1 className="text-6xl font-black tracking-tight text-[hsl(var(--text-white))] mb-2">
               Smart<span style={{ color: "hsl(142 71% 45%)" }}>Load</span>
             </h1>
-            <p className="text-lg text-white/50">
+            <p className="text-lg text-[hsl(var(--text-white-50))]">
               {lang === "en" ? "Train smarter." : "Entraîne-toi plus intelligemment."}
             </p>
           </div>
@@ -92,7 +92,7 @@ export default function Home() {
           <div className="animate-slide-up stagger-2">
             <Link
               href="/login"
-              className="w-full min-h-14 rounded-2xl text-base font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.97]"
+              className="w-full min-h-14 rounded-2xl text-base font-bold text-[hsl(var(--text-white))] flex items-center justify-center gap-2 transition-all active:scale-[0.97]"
               style={{
                 background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))",
                 boxShadow: "0 8px 32px hsl(142 71% 45% / 0.35)",
@@ -110,7 +110,7 @@ export default function Home() {
         <button
           onClick={() => setShowMore(!showMore)}
           className="w-full flex items-center justify-center gap-2 py-3 text-sm font-medium mb-4 active:scale-95 transition-all"
-          style={{ color: "hsl(220 15% 45%)" }}
+          style={{ color: "hsl(var(--muted-foreground))" }}
         >
           {showMore ? t("home_hide", lang) : t("home_features", lang)}
           <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} />
@@ -123,16 +123,16 @@ export default function Home() {
                 key={f.title}
                 className="rounded-2xl p-4 animate-scale-in"
                 style={{
-                  backgroundColor: "hsl(220 15% 9%)",
-                  border: "1px solid hsl(220 15% 14%)",
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--card-border))",
                   animationDelay: `${i * 0.08}s`,
                 }}
               >
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)" }}>
                   <f.icon className="h-5 w-5" style={{ color: "hsl(142 71% 45%)" }} />
                 </div>
-                <p className="text-sm font-semibold text-white mb-1">{f.title}</p>
-                <p className="text-xs" style={{ color: "hsl(220 15% 40%)" }}>{f.desc}</p>
+                <p className="text-sm font-semibold text-[hsl(var(--text-white))] mb-1">{f.title}</p>
+                <p className="text-xs" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{f.desc}</p>
               </div>
             ))}
           </div>

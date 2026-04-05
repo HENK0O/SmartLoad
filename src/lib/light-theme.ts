@@ -2,6 +2,7 @@ const LIGHT_OVERRIDES = [
   ["bg-neutral-950", "#fafafa"],
   ["bg-neutral-900", "#ffffff"],
   ["bg-neutral-800", "#f5f5f5"],
+  ["bg-neutral-700", "#e5e5e5"],
   ["border-neutral-800", "#e5e5e5"],
   ["border-neutral-700", "#d4d4d4"],
   ["text-neutral-50", "#171717"],
@@ -22,6 +23,7 @@ function buildLightCSS(): string {
     html.light .bg-neutral-950 { background-color: #fafafa; }
     html.light .bg-neutral-900 { background-color: #ffffff; }
     html.light .bg-neutral-800 { background-color: #f5f5f5; }
+    html.light .bg-neutral-700 { background-color: #e5e5e5; }
     html.light .border-neutral-800 { border-color: #e5e5e5; }
     html.light .border-neutral-700 { border-color: #d4d4d4; }
     html.light .text-neutral-50 { color: #171717; }
@@ -33,6 +35,8 @@ function buildLightCSS(): string {
     html.light .text-neutral-950 { color: #0a0a0a; }
     html.light .text-white { color: #171717; }
     html.light .placeholder\\:text-neutral-600::placeholder { color: #a3a3a3; }
+    html.light .placeholder\\:text-white\\/20::placeholder { color: rgba(23,23,23,0.2); }
+    html.light .placeholder\\:text-white\\/30::placeholder { color: rgba(23,23,23,0.3); }
     html.light .hover\\:text-neutral-300:hover { color: #525252; }
     html.light .hover\\:text-neutral-400:hover { color: #737373; }
     html.light .hover\\:border-neutral-700:hover { border-color: #d4d4d4; }
@@ -77,6 +81,22 @@ function buildLightCSS(): string {
     html.light .hover\\:text-red-500:hover { color: #dc2626; }
     html.light .hover\\:bg-red-500\\/5:hover { background-color: rgba(239,68,68,0.08); }
     html.light .hover\\:border-green-500\\/30:hover { border-color: rgba(22,163,74,0.35); }
+    html.light .text-green-400 { color: #22c55e; }
+    html.light .text-blue-500 { color: #3b82f6; }
+    html.light .text-yellow-500 { color: #eab308; }
+    html.light .hover\\:text-green-500:hover { color: #16a34a; }
+    html.light .hover\\:text-red-500:hover { color: #dc2626; }
+    html.light .hover\\:bg-neutral-800:hover { background-color: #f0f0f0; }
+    html.light .hover\\:bg-neutral-700:hover { background-color: #e8e8e8; }
+    html.light .border-green-500\\/50 { border-color: rgba(34,197,94,0.5); }
+    html.light .bg-white { background-color: #ffffff; }
+    html.light .text-gray-400 { color: #9ca3af; }
+    html.light .text-gray-500 { color: #6b7280; }
+    html.light .text-gray-600 { color: #4b5563; }
+    html.light .bg-gray-100 { background-color: #f3f4f6; }
+    html.light .bg-gray-200 { background-color: #e5e7eb; }
+    html.light .bg-gray-900 { background-color: #111827; }
+    html.light .hover\\:bg-white\\/10:hover { background-color: rgba(0,0,0,0.1); }
   `;
 }
 

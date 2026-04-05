@@ -59,7 +59,7 @@ export default function ConfirmDialog({
       )}
       style={{
         backdropFilter: "blur(8px)",
-        backgroundColor: "hsl(220 15% 6% / 0.7)",
+        backgroundColor: "hsl(var(--overlay))",
       }}
       onClick={handleBackdropClick}
     >
@@ -69,9 +69,9 @@ export default function ConfirmDialog({
           open ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
         )}
         style={{
-          backgroundColor: "hsl(220 15% 9%)",
-          border: "1px solid hsl(220 15% 14%)",
-          boxShadow: "0 24px 48px hsl(0 0% 0% / 0.4)",
+          backgroundColor: "hsl(var(--card))",
+          border: "1px solid hsl(var(--card-border))",
+          boxShadow: `0 24px 48px hsl(var(--shadow-heavy))`,
         }}
       >
         <div className="flex items-start justify-between">
@@ -88,16 +88,16 @@ export default function ConfirmDialog({
               </div>
             )}
             <div>
-              <h3 className="text-lg font-semibold text-white">{title}</h3>
-              <p className="mt-1 text-sm text-white/60">{description}</p>
+              <h3 className="text-lg font-semibold" style={{ color: "hsl(var(--text-white))" }}>{title}</h3>
+              <p className="mt-1 text-sm" style={{ color: "hsl(var(--text-white-60))" }}>{description}</p>
             </div>
           </div>
           <button
             onClick={onCancel}
             className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors active:scale-[0.98]"
-            style={{ backgroundColor: "hsl(220 15% 14%)" }}
+            style={{ backgroundColor: "hsl(var(--card-border))" }}
           >
-            <X className="w-4 h-4 text-white/60" />
+            <X className="w-4 h-4" style={{ color: "hsl(var(--text-white-60))" }} />
           </button>
         </div>
 
@@ -106,15 +106,15 @@ export default function ConfirmDialog({
             onClick={onCancel}
             className="flex-1 min-h-11 rounded-xl text-sm font-medium transition-all active:scale-[0.98]"
             style={{
-              backgroundColor: "hsl(220 15% 14%)",
-              color: "hsl(220 15% 80%)",
+              backgroundColor: "hsl(var(--card-border))",
+              color: "hsl(var(--inactive-btn-text-light))",
             }}
           >
             {cancelLabel}
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 min-h-11 rounded-xl text-sm font-semibold text-white transition-all active:scale-[0.98]"
+            className="flex-1 min-h-11 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
             style={{
               background: danger
                 ? "linear-gradient(135deg, hsl(0 72% 51%), hsl(0 72% 41%))"
@@ -122,6 +122,7 @@ export default function ConfirmDialog({
               boxShadow: danger
                 ? "0 4px 16px hsl(0 72% 51% / 0.3)"
                 : "0 4px 16px hsl(142 71% 45% / 0.3)",
+              color: "white",
             }}
           >
             {confirmLabel}

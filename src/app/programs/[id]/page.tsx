@@ -104,37 +104,37 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   return (
     <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/programs" className="p-2 rounded-xl active:scale-95 transition-all text-white/50 hover:text-white" style={{ backgroundColor: "hsl(220 15% 9%)" }}>
+        <Link href="/programs" className="p-2 rounded-xl active:scale-95 transition-all text-[hsl(var(--text-white))]/50 hover:text-[hsl(var(--text-white))]" style={{ backgroundColor: "hsl(var(--card))" }}>
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">{programName}</h1>
       </div>
 
       {loadingData ? (
-        <p className="text-white/50">Chargement...</p>
+        <p className="text-[hsl(var(--text-white))]/50">Chargement...</p>
       ) : (
         <>
           {programExercises.length === 0 && (
             <div className="text-center py-16 animate-fade-in">
-              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)" }}>
-                <Dumbbell className="h-8 w-8" style={{ color: "hsl(220 15% 30%)" }} />
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
+                <Dumbbell className="h-8 w-8" style={{ color: "hsl(var(--muted-foreground-dimmer))" }} />
               </div>
-              <p className="text-white/50 text-sm">Aucun exercice. Ajoute-en pour commencer !</p>
+              <p className="text-[hsl(var(--text-white))]/50 text-sm">Aucun exercice. Ajoute-en pour commencer !</p>
             </div>
           )}
 
           <div className="flex flex-col gap-2.5 mb-6">
             {programExercises.map((pe, idx) => (
-              <div key={pe.id} className="rounded-2xl overflow-hidden animate-slide-up" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)", animationDelay: `${idx * 0.05}s` }}>
+              <div key={pe.id} className="rounded-2xl overflow-hidden animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", animationDelay: `${idx * 0.05}s` }}>
                 {editingId === pe.id ? (
                   <div className="p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <p className="font-semibold text-sm text-white">{pe.exercises.name}</p>
+                      <p className="font-semibold text-sm text-[hsl(var(--text-white))]">{pe.exercises.name}</p>
                       <div className="flex gap-2">
                         <button onClick={() => saveEdit(pe.id)} className="p-2 rounded-lg active:scale-95 transition-all" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)" }}>
                           <Save className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
                         </button>
-                        <button onClick={() => setEditingId(null)} className="p-2 rounded-lg text-white/50 hover:text-white active:scale-95 transition-all">
+                        <button onClick={() => setEditingId(null)} className="p-2 rounded-lg text-[hsl(var(--text-white))]/50 hover:text-[hsl(var(--text-white))] active:scale-95 transition-all">
                           <X className="h-4 w-4" />
                         </button>
                       </div>
@@ -147,27 +147,27 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                         { label: "Poids", value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
                       ].map((field) => (
                         <div key={field.label}>
-                          <label className="text-[10px] text-white/30 block mb-1">{field.label}</label>
-                          <input type="number" value={field.value} onChange={(e) => field.set(Math.max(field.min, parseFloat(e.target.value) || field.min))} className="w-full rounded-lg px-2 py-1.5 text-center text-sm text-white focus:outline-none transition-all" style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)" }} onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")} onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(220 15% 16%)")} min={field.min} max={field.max} step={field.step || 1} />
+                          <label className="text-[10px] text-[hsl(var(--text-white))]/30 block mb-1">{field.label}</label>
+                          <input type="number" value={field.value} onChange={(e) => field.set(Math.max(field.min, parseFloat(e.target.value) || field.min))} className="w-full rounded-lg px-2 py-1.5 text-center text-sm text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")} onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--inactive-btn-border))")} min={field.min} max={field.max} step={field.step || 1} />
                         </div>
                       ))}
                     </div>
-                    <p className="text-[10px] text-white/30 mt-2">Double progression : {editRepMin}→{editRepMax} reps, puis +poids</p>
+                    <p className="text-[10px] text-[hsl(var(--text-white))]/30 mt-2">Double progression : {editRepMin}→{editRepMax} reps, puis +poids</p>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono w-5" style={{ color: "hsl(220 15% 35%)" }}>{idx + 1}</span>
+                      <span className="text-xs font-mono w-5" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{idx + 1}</span>
                       <div>
-                        <p className="font-semibold text-sm text-white">{pe.exercises.name}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "hsl(220 15% 45%)" }}>
+                        <p className="font-semibold text-sm text-[hsl(var(--text-white))]">{pe.exercises.name}</p>
+                        <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
                           {pe.target_sets} × {pe.rep_range_min}–{pe.rep_range_max} reps @ {pe.target_weight} kg
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => startEdit(pe)} className="p-2 rounded-lg text-white/50 hover:text-white active:scale-95 transition-all"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => setDeleteExerciseConfirm(pe.id)} className="p-2 rounded-lg text-white/50 hover:text-red-500 active:scale-95 transition-all"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => startEdit(pe)} className="p-2 rounded-lg text-[hsl(var(--text-white))]/50 hover:text-[hsl(var(--text-white))] active:scale-95 transition-all"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => setDeleteExerciseConfirm(pe.id)} className="p-2 rounded-lg text-[hsl(var(--text-white))]/50 hover:text-red-500 active:scale-95 transition-all"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
                 )}
@@ -190,10 +190,10 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                     }
                   }
                 }}
-                className="rounded-xl px-4 py-3 text-white focus:outline-none transition-all appearance-none"
-                style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)" }}
+                className="rounded-xl px-4 py-3 text-[hsl(var(--text-white))] focus:outline-none transition-all appearance-none"
+                style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
-                onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(220 15% 14%)")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--card-border))")}
               >
                 <option value="">Choisir un exercice</option>
                 {(() => {
@@ -209,14 +209,14 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                   );
                 })()}
               </select>
-              <button onClick={() => { setShowAdd(false); setSelectedBase(null); }} className="w-full rounded-xl px-6 py-3 text-sm font-medium active:scale-95 transition-all" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)", color: "hsl(220 15% 60%)" }}>Annuler</button>
+              <button onClick={() => { setShowAdd(false); setSelectedBase(null); }} className="w-full rounded-xl px-6 py-3 text-sm font-medium active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", color: "hsl(var(--inactive-btn-text))" }}>Annuler</button>
             </div>
           ) : showSupportPopup && selectedBase ? (
-            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(220 15% 6% / 0.7)", backdropFilter: "blur(8px)" }}>
-              <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px solid hsl(220 15% 14%)", boxShadow: "0 24px 48px hsl(0 0% 0% / 0.4)" }}>
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(var(--overlay))", backdropFilter: "blur(8px)" }}>
+              <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", boxShadow: "0 24px 48px hsl(var(--shadow-heavy))" }}>
                 <div className="flex items-center justify-between mb-6">
-                  <p className="font-semibold text-lg text-white">{selectedBase.baseName}</p>
-                  <button onClick={() => setShowSupportPopup(false)} className="text-sm active:scale-95 transition-all" style={{ color: "hsl(220 15% 50%)" }}>Retour</button>
+                  <p className="font-semibold text-lg text-[hsl(var(--text-white))]">{selectedBase.baseName}</p>
+                  <button onClick={() => setShowSupportPopup(false)} className="text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--icon-muted))" }}>Retour</button>
                 </div>
                 <div className="flex flex-col gap-3">
                   {selectedBase.supports.map((support) => (
@@ -224,9 +224,9 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                       key={support}
                       onClick={() => addExercise(support)}
                       className="w-full rounded-xl px-6 py-4 text-center font-medium active:scale-[0.98] transition-all"
-                      style={{ backgroundColor: "hsl(220 15% 11%)", border: "1px solid hsl(220 15% 16%)", color: "hsl(220 15% 80%)" }}
+                      style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))", color: "hsl(var(--inactive-btn-text-light))" }}
                       onMouseEnter={(e) => { e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)"; e.currentTarget.style.color = "hsl(142 71% 45%)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "hsl(220 15% 16%)"; e.currentTarget.style.color = "hsl(220 15% 80%)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "hsl(var(--inactive-btn-border))"; e.currentTarget.style.color = "hsl(var(--inactive-btn-text-light))"; }}
                     >
                       {support}
                     </button>
@@ -235,7 +235,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <button onClick={() => setShowAdd(true)} className="w-full rounded-xl px-6 py-4 text-center text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ backgroundColor: "hsl(220 15% 9%)", border: "1px dashed hsl(220 15% 16%)", color: "hsl(220 15% 50%)" }}>
+            <button onClick={() => setShowAdd(true)} className="w-full rounded-xl px-6 py-4 text-center text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ backgroundColor: "hsl(var(--card))", border: "1px dashed hsl(var(--inactive-btn-border))", color: "hsl(var(--icon-muted))" }}>
               <Plus className="h-4 w-4" />
               Ajouter un exercice
             </button>

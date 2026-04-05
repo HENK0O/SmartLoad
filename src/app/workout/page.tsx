@@ -122,7 +122,7 @@ export default function WorkoutPage() {
     <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Nouvelle séance</h1>
-        <Link href="/programs" className="inline-flex items-center gap-1 text-sm active:scale-95 transition-all" style={{ color: "hsl(220 15% 50%)" }}>
+        <Link href="/programs" className="inline-flex items-center gap-1 text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--inactive-btn-text))" }}>
           <ArrowLeft className="h-4 w-4" />
           Retour
         </Link>
@@ -138,21 +138,21 @@ export default function WorkoutPage() {
         }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Zap className="h-5 w-5 text-white" />
-          <p className="text-lg font-bold text-white">Séance Push</p>
+          <Zap className="h-5 w-5 text-[hsl(var(--text-white))]" />
+          <p className="text-lg font-bold text-[hsl(var(--text-white))]">Séance Push</p>
         </div>
-        <p className="text-sm text-white/70">
+        <p className="text-sm text-[hsl(var(--text-white-70))]">
           Développé couché · Incliné · Chest press · Militaire · Élévations · Triceps
         </p>
-        <p className="text-xs text-white/50 mt-1">
+        <p className="text-xs text-[hsl(var(--text-white-50))] mt-1">
           24 séries · ~50 min
         </p>
-        {startingPush && <Loader2 className="h-5 w-5 animate-spin text-white mt-2" />}
+        {startingPush && <Loader2 className="h-5 w-5 animate-spin text-[hsl(var(--text-white))] mt-2" />}
       </button>
 
       {programs.length > 0 && (
         <>
-          <p className="text-sm font-medium mb-3 animate-slide-up stagger-1" style={{ color: "hsl(220 15% 45%)" }}>Mes programmes</p>
+          <p className="text-sm font-medium mb-3 animate-slide-up stagger-1" style={{ color: "hsl(var(--muted-foreground))" }}>Mes programmes</p>
           <div className="flex flex-col gap-2.5">
             {programs.map((p, idx) => (
               <button
@@ -160,20 +160,20 @@ export default function WorkoutPage() {
                 onClick={() => startWorkout(p.id)}
                 className="w-full rounded-2xl p-4 text-left flex items-center justify-between active:scale-[0.98] transition-all animate-slide-up"
                 style={{
-                  backgroundColor: "hsl(220 15% 9%)",
-                  border: "1px solid hsl(220 15% 14%)",
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--card-border))",
                   animationDelay: `${(idx + 2) * 0.05}s`,
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.3)")}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "hsl(220 15% 14%)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "hsl(var(--card-border))")}
               >
                 <div className="flex items-center gap-3">
                   <div className="rounded-xl p-2" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)" }}>
                     <Dumbbell className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
                   </div>
-                  <span className="font-semibold text-sm text-white">{p.name}</span>
+                  <span className="font-semibold text-sm text-[hsl(var(--text-white))]">{p.name}</span>
                 </div>
-                <ChevronRight className="h-4 w-4" style={{ color: "hsl(220 15% 35%)" }} />
+                <ChevronRight className="h-4 w-4" style={{ color: "hsl(var(--muted-foreground-dim))" }} />
               </button>
             ))}
           </div>

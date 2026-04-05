@@ -27,7 +27,7 @@ function generateParticles(count: number): Particle[] {
     x: Math.random() * 100,
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
     delay: Math.random() * 1.5,
-    duration: 2 + Math.random() * 2,
+    duration: 4 + Math.random() * 2,
     size: 4 + Math.random() * 8,
     rotation: Math.random() * 360,
   }));
