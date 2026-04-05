@@ -41,20 +41,31 @@ interface ConfettiProps {
 export default function Confetti({ active, duration = 3000 }: ConfettiProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [visible, setVisible] = useState(false);
+  const [fading, setFading] = useState(false);
 
   useEffect(() => {
     if (active) {
       setParticles(generateParticles(150));
       setVisible(true);
-      const timer = setTimeout(() => setVisible(false), duration);
+      setFading(false);
+      const timer = setTimeout(() => setFading(true), duration);
       return () => clearTimeout(timer);
     }
   }, [active, duration]);
 
-  if (!visible) return null;
+  if (!visible && !fading) return null;
 
   return (
-    <div className="fixed inset-0 z-50 pointer-events-none overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 pointer-events-none overflow-hidden"
+      style={{
+        opacity: fading ? 0 : 1,
+        transition: "opacity 0.8s ease-out",
+      }}
+      onTransitionEnd={() => {
+        if (fading) setVisible(false);
+      }}
+    >
       {particles.map((p) => (
         <div
           key={p.id}
@@ -78,7 +89,7 @@ export default function Confetti({ active, duration = 3000 }: ConfettiProps) {
             opacity: 1;
           }
           100% {
-            transform: translateY(130vh) rotate(720deg) scale(0.5);
+            transform: translateY(200vh) rotate(720deg) scale(0.5);
             opacity: 0;
           }
         }
