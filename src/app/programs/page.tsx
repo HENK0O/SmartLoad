@@ -429,14 +429,14 @@ export default function ProgramsPage() {
       {/* Language switcher - top right */}
       <button
         onClick={() => setLang(lang === "fr" ? "en" : "fr")}
-        className="absolute top-0 right-0 z-30 p-2 rounded-xl active:scale-95 transition-all md:right-0 md:top-1"
+        className="absolute top-1 right-1 z-0 p-2 rounded-xl active:scale-95 transition-all"
         style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}
       >
         <LangFlag lang={lang} size={20} />
       </button>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 pr-14">
         <div className="flex items-center gap-3 pr-12 md:pr-0">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
