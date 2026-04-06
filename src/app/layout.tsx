@@ -55,7 +55,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full bg-neutral-950 text-neutral-50">
+      <body className="min-h-screen bg-neutral-950 text-neutral-50">
         <AppProvider>
           <AppShell>{children}</AppShell>
           <BottomNav />

@@ -116,6 +116,8 @@ const fr: T = {
   workout_plate_5: "5 kg",
   workout_plate_2_5: "2.5 kg",
   workout_plate_1_25: "1.25 kg",
+  workout_weight_placeholder: "Poids",
+  workout_enter_weight: "Entre ton poids habituel pour activer la surcharge intelligente",
 };
 
 const en: T = {
@@ -232,6 +234,8 @@ const en: T = {
   workout_plate_5: "5 kg",
   workout_plate_2_5: "2.5 kg",
   workout_plate_1_25: "1.25 kg",
+  workout_weight_placeholder: "Weight",
+  workout_enter_weight: "Enter your usual weight to enable smart progression",
 };
 
 export function t(key: string, lang: Lang): string {

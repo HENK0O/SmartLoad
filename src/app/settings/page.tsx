@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
-import { LogOut, Check, Scale, User, CreditCard, Sun, Moon, ChevronRight, Volume2, VolumeX, Globe, Download, Bug, Info, Timer, ArrowLeft, Save, X } from "lucide-react";
+import { LogOut, Check, Scale, User, CreditCard, Sun, Moon, ChevronRight, Volume2, VolumeX, Globe, Download, Bug, Info, Timer, ArrowLeft, Save, X, Zap } from "lucide-react";
 import { useApp } from "@/lib/context";
 import { LangFlag } from "@/components/LangFlag";
 import { t } from "@/lib/i18n";
@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [restTime, setRestTime] = useState(90);
   const [restTimeInput, setRestTimeInput] = useState("90");
   const [timerSound, setTimerSound] = useState(true);
+  const [showRPE, setShowRPE] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -42,6 +43,7 @@ export default function SettingsPage() {
       if (data.unit) setUnit(data.unit as "kg" | "lbs");
       if (data.rest_time) { setRestTime(data.rest_time); setRestTimeInput(String(data.rest_time)); }
       if (data.timer_sound !== null && data.timer_sound !== undefined) setTimerSound(data.timer_sound);
+      if (data.show_rpe !== null && data.show_rpe !== undefined) setShowRPE(data.show_rpe);
       if (data.lang) setLang(data.lang);
       if (data.weight) setProfileWeight(String(data.weight));
       if (data.height) setProfileHeight(String(data.height));
@@ -278,6 +280,22 @@ export default function SettingsPage() {
           </div>
           <div className="w-11 h-6 rounded-full relative transition-all" style={{ backgroundColor: timerSound ? "hsl(142 71% 45%)" : "hsl(var(--muted-foreground-dimmer))" }}>
             <div className="absolute top-0.5 w-5 h-5 rounded-full transition-all" style={{ backgroundColor: "hsl(var(--text-white))", left: timerSound ? "22px" : "2px" }} />
+          </div>
+        </button>
+
+        {/* Show RPE toggle */}
+        <button onClick={async () => { const newVal = !showRPE; setShowRPE(newVal); await saveSetting("show_rpe", newVal); }} className="w-full rounded-2xl p-4 text-left flex items-center justify-between active:scale-[0.98] transition-all animate-slide-up" style={cardStyle}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: showRPE ? "hsl(142 71% 45% / 0.15)" : "hsl(var(--card-border))" }}>
+              <Zap className="h-5 w-5" style={{ color: showRPE ? "hsl(142 71% 45%)" : "hsl(var(--muted-foreground))" }} />
+            </div>
+            <div>
+              <p className="font-semibold text-sm" style={textPrimary}>Afficher le RPE par série</p>
+              <p className="text-xs" style={textMuted}>{showRPE ? "Activé" : "Désactivé par défaut"}</p>
+            </div>
+          </div>
+          <div className="w-11 h-6 rounded-full relative transition-all" style={{ backgroundColor: showRPE ? "hsl(142 71% 45%)" : "hsl(var(--muted-foreground-dimmer))" }}>
+            <div className="absolute top-0.5 w-5 h-5 rounded-full transition-all" style={{ backgroundColor: "hsl(var(--text-white))", left: showRPE ? "22px" : "2px" }} />
           </div>
         </button>
 

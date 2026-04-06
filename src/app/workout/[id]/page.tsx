@@ -14,8 +14,9 @@ import { useApp } from "@/lib/context";
 import Link from "next/link";
 import {
   ArrowLeft, Plus, Check, X, WifiOff, Zap, TrendingUp, Timer, AlertTriangle,
-  ChevronLeft, ChevronRight, Dumbbell, List, Trophy, Clock
+  ChevronLeft, ChevronRight, Dumbbell, List, Trophy, Clock, StickyNote
 } from "lucide-react";
+import confetti from "canvas-confetti";
 
 interface Exercise { id: string; name: string; muscle_group: string | null; }
 
@@ -28,6 +29,7 @@ interface ProgramExercise {
 interface WorkoutSet {
   id: string; exercise_id: string; set_number: number;
   reps: number; weight: number; rest_sec: number; completed: boolean;
+  note?: string; rpe?: number;
 }
 
 interface ExerciseGroup {
@@ -100,6 +102,21 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [newPRs, setNewPRs] = useState<string[]>([]);
   const [showPlates, setShowPlates] = useState<string | null>(null);
   const [completedSetAnimations, setCompletedSetAnimations] = useState<Record<string, boolean>>({});
+  const [showWeightTooltip, setShowWeightTooltip] = useState<string | null>(null);
+  const [dismissedTooltips, setDismissedTooltips] = useState<Set<string>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("smartload-dismissed-weight-tooltips");
+        return stored ? new Set(JSON.parse(stored)) : new Set<string>();
+      } catch { return new Set<string>(); }
+    }
+    return new Set<string>();
+  });
+  const [showPRBadge, setShowPRBadge] = useState(false);
+  const [prBadgeInfo, setPRBadgeInfo] = useState({ exercise: "", oneRM: 0 });
+  const [noteEditingSet, setNoteEditingSet] = useState<string | null>(null);
+  const [noteInputValue, setNoteInputValue] = useState("");
+  const [showRPE, setShowRPE] = useState(false);
 
   const onlineStatus = useOnlineStatus();
   const workoutStartTime = useRef<number>(Date.now());
@@ -150,11 +167,12 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   }, [timerActive]);
 
   async function loadUnit() {
-    const { data } = await supabase.from("profiles").select("unit, rest_time, timer_sound").eq("id", user!.id).single();
+    const { data } = await supabase.from("profiles").select("unit, rest_time, timer_sound, show_rpe").eq("id", user!.id).single();
     if (data) {
       setUnit(data.unit as "kg" | "lbs");
       if (data.rest_time) setDefaultRestTime(data.rest_time);
       if (data.timer_sound !== undefined && data.timer_sound !== null) setTimerSoundEnabled(data.timer_sound);
+      if (data.show_rpe !== undefined && data.show_rpe !== null) setShowRPE(data.show_rpe);
     }
   }
 
@@ -190,10 +208,10 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
             repRangeMin: p.rep_range_min || p.target_reps, repRangeMax: p.rep_range_max || p.target_reps + 4, sets: [],
           }));
           const { data: sets } = await supabase.from("workout_sets").select("*").eq("workout_id", workoutId).order("set_number");
-          if (sets) {
+            if (sets) {
             for (const s of sets) {
               const group = groupsData.find((g) => g.exercise.id === s.exercise_id);
-              if (group) group.sets.push({ id: s.id, exercise_id: s.exercise_id, set_number: s.set_number, reps: s.reps, weight: s.weight, rest_sec: s.rest_sec, completed: s.completed });
+              if (group) group.sets.push({ id: s.id, exercise_id: s.exercise_id, set_number: s.set_number, reps: s.reps, weight: s.weight, rest_sec: s.rest_sec, completed: s.completed, note: s.note, rpe: s.rpe });
             }
           }
         }
@@ -205,7 +223,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           for (const s of sets) {
             const exId = s.exercises.id;
             if (!exerciseMap[exId]) { exerciseMap[exId] = { exercise: s.exercises as Exercise, sets: [] }; exerciseOrder.push(exId); }
-            exerciseMap[exId].sets.push({ id: s.id, exercise_id: s.exercise_id, set_number: s.set_number, reps: s.reps, weight: s.weight, rest_sec: s.rest_sec, completed: s.completed });
+            exerciseMap[exId].sets.push({ id: s.id, exercise_id: s.exercise_id, set_number: s.set_number, reps: s.reps, weight: s.weight, rest_sec: s.rest_sec, completed: s.completed, note: s.note, rpe: s.rpe });
           }
           groupsData = exerciseOrder.map((exId) => {
             const entry = exerciseMap[exId];
@@ -220,48 +238,57 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       setGroups(groupsData);
 
       if (workout.status === "in_progress") {
-        const info: Record<string, SmartProgression> = {};
-        const lastSetsMap: Record<string, LastSessionSet[]> = {};
+        const exerciseIds = groupsData.map((g) => g.exercise.id);
+
+        // 1. Fetch past workouts ONCE
+        let pastQuery = supabase.from("workouts").select("id, started_at").eq("user_id", user!.id).eq("status", "completed").neq("id", workoutId);
+        if (programId) pastQuery = pastQuery.eq("program_id", programId); else pastQuery = pastQuery.is("program_id", null);
+        const { data: pastWorkouts } = await pastQuery.order("started_at", { ascending: true });
+
+        // 2. Fetch last workout ONCE
+        const { data: lastWorkout } = await supabase.from("workouts").select("id").eq("user_id", user!.id).eq("status", "completed").neq("id", workoutId).order("started_at", { ascending: false }).limit(1).single();
+
+        // 3. Fetch ALL past sets in ONE query
+        const pastWorkoutIds = (pastWorkouts || []).map((w) => w.id);
+        let allPastSets: { workout_id: string; exercise_id: string; reps: number; weight: number; completed: boolean }[] = [];
+        if (pastWorkoutIds.length > 0) {
+          const { data: pastSets } = await supabase.from("workout_sets").select("workout_id, exercise_id, reps, weight, completed").in("workout_id", pastWorkoutIds).in("exercise_id", exerciseIds).order("set_number");
+          allPastSets = pastSets || [];
+        }
+
+        // 4. Fetch last session sets in ONE query
         let lastVol = 0;
-
-        for (const group of groupsData) {
-          const result = await loadSmartProgression(group.exercise.id, group.exercise.name, group.exercise.muscle_group, programId, groupsData);
-          if (result) info[group.exercise.id] = result;
-
-          const { data: lastWorkout } = await supabase.from("workouts").select("id").eq("user_id", user!.id).eq("status", "completed").neq("id", workoutId).order("started_at", { ascending: false }).limit(1).single();
-          if (lastWorkout) {
-            const { data: lastSets } = await supabase.from("workout_sets").select("exercise_id, set_number, reps, weight, completed").eq("workout_id", lastWorkout.id).eq("exercise_id", group.exercise.id).order("set_number");
-            if (lastSets && lastSets.length > 0) {
-              lastSetsMap[group.exercise.id] = lastSets.map((s) => ({ exerciseId: s.exercise_id, setNumber: s.set_number, reps: s.reps, weight: s.weight }));
-              for (const s of lastSets) { if (s.completed) lastVol += s.weight * s.reps; }
-            }
+        const lastSetsMap: Record<string, LastSessionSet[]> = {};
+        if (lastWorkout) {
+          const { data: lastSets } = await supabase.from("workout_sets").select("exercise_id, set_number, reps, weight, completed").eq("workout_id", lastWorkout.id).in("exercise_id", exerciseIds).order("set_number");
+          for (const s of lastSets || []) {
+            if (!lastSetsMap[s.exercise_id]) lastSetsMap[s.exercise_id] = [];
+            lastSetsMap[s.exercise_id].push({ exerciseId: s.exercise_id, setNumber: s.set_number, reps: s.reps, weight: s.weight });
+            if (s.completed) lastVol += s.weight * s.reps;
           }
         }
+
+        // 5. Build progression for each exercise from prefetched data
+        const info: Record<string, SmartProgression> = {};
+        for (const group of groupsData) {
+          const exercisePastSets = allPastSets.filter((s) => s.exercise_id === group.exercise.id);
+          const sessions: ExerciseSession[] = [];
+          for (const w of pastWorkouts || []) {
+            const wSets = exercisePastSets.filter((s) => s.workout_id === w.id);
+            if (wSets.length > 0) sessions.push({ date: w.started_at, sets: wSets.map((s) => ({ reps: s.reps, weight: s.weight, completed: s.completed })) });
+          }
+          const history: ExerciseHistory = { exerciseId: group.exercise.id, exerciseName: group.exercise.name, muscleGroup: group.exercise.muscle_group, sessions };
+          const targets: ProgressionTargets = { targetSets: group.targetSets, repRangeMin: group.repRangeMin, repRangeMax: group.repRangeMax, currentWeight: group.targetWeight };
+          const analysis = analyzeProgression(history, targets);
+          info[group.exercise.id] = { analysis, primary: analysis.primaryOption, alternative: analysis.alternativeOption, deload: analysis.deloadOption };
+        }
+
         setSmartProgression(info);
         setLastSessionSets(lastSetsMap);
         setLastSessionVolume(Math.round(lastVol));
       }
     }
     setLoadingData(false);
-  }
-
-  async function loadSmartProgression(exerciseId: string, exerciseName: string, muscleGroup: string | null, programId: string | null, allGroups: ExerciseGroup[]): Promise<SmartProgression | null> {
-    let query = supabase.from("workouts").select("id, started_at").eq("user_id", user!.id).eq("status", "completed").neq("id", workoutId);
-    if (programId) query = query.eq("program_id", programId); else query = query.is("program_id", null);
-    const { data: pastWorkouts } = await query.order("started_at", { ascending: true });
-    const sessions: ExerciseSession[] = [];
-    if (pastWorkouts) {
-      for (const w of pastWorkouts) {
-        const { data: sets } = await supabase.from("workout_sets").select("reps, weight, completed").eq("workout_id", w.id).eq("exercise_id", exerciseId).order("set_number");
-        if (sets && sets.length > 0) sessions.push({ date: w.started_at, sets: sets.map((s) => ({ reps: s.reps, weight: s.weight, completed: s.completed })) });
-      }
-    }
-    const group = allGroups.find((g) => g.exercise.id === exerciseId);
-    if (!group) return null;
-    const history: ExerciseHistory = { exerciseId, exerciseName, muscleGroup, sessions };
-    const targets: ProgressionTargets = { targetSets: group.targetSets, repRangeMin: group.repRangeMin, repRangeMax: group.repRangeMax, currentWeight: group.targetWeight };
-    const analysis = analyzeProgression(history, targets);
-    return { analysis, primary: analysis.primaryOption, alternative: analysis.alternativeOption, deload: analysis.deloadOption };
   }
 
   async function applyProgression(exerciseId: string, type: "reps" | "weight" | "deload") {
@@ -294,11 +321,17 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     if (bestSet > 0 && smartProgression[exerciseId]) {
       const currentBest = smartProgression[exerciseId].analysis.bestSession1RM;
       if (bestSet > currentBest) {
-        setPRInfo({ exercise: exerciseName, oneRM: Math.round(bestSet * 10) / 10 });
+        const roundedOneRM = Math.round(bestSet * 10) / 10;
+        setPRInfo({ exercise: exerciseName, oneRM: roundedOneRM });
         setShowPR(true);
-        setNewPRs((prev) => [...prev, `${exerciseName}: ${Math.round(bestSet * 10) / 10} kg`]);
+        setNewPRs((prev) => [...prev, `${exerciseName}: ${roundedOneRM} kg`]);
         triggerHaptic("pr");
         setTimeout(() => setShowPR(false), 4000);
+
+        setPRBadgeInfo({ exercise: exerciseName, oneRM: roundedOneRM });
+        setShowPRBadge(true);
+        confetti({ particleCount: 120, spread: 70, startVelocity: 50, colors: ["#22c55e", "#16a34a", "#4ade80", "#facc15", "#38bdf8"], origin: { y: 0.6 } });
+        setTimeout(() => setShowPRBadge(false), 2500);
       }
     }
   }
@@ -306,15 +339,17 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   async function loadExerciseHistory(exerciseId: string) {
     const { data: workouts } = await supabase.from("workouts").select("id, started_at").eq("user_id", user!.id).eq("status", "completed").order("started_at", { ascending: false }).limit(20);
     if (!workouts) { setExerciseHistory([]); return; }
+    // ONE query for all sets instead of N queries
+    const workoutIds = workouts.map((w) => w.id);
+    const { data: allSets } = await supabase.from("workout_sets").select("workout_id, exercise_id, reps, weight, completed").in("workout_id", workoutIds).eq("exercise_id", exerciseId);
+    const workoutDateMap: Record<string, string> = {};
+    for (const w of workouts) workoutDateMap[w.id] = w.started_at;
     const history: { date: string; weight: number; reps: number; oneRM: number }[] = [];
     for (const w of workouts) {
-      const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed").eq("workout_id", w.id);
-      if (sets) {
-        const exSets = sets.filter((s) => s.exercise_id === exerciseId && s.completed);
-        if (exSets.length > 0) {
-          const best = exSets.reduce((b, s) => { const rm = estimate1RM(s.weight, s.reps); return rm > b.oneRM ? { date: w.started_at, weight: s.weight, reps: s.reps, oneRM: rm } : b; }, { date: w.started_at, weight: 0, reps: 0, oneRM: 0 });
-          history.push(best);
-        }
+      const exSets = (allSets || []).filter((s) => s.workout_id === w.id && s.completed);
+      if (exSets.length > 0) {
+        const best = exSets.reduce((b, s) => { const rm = estimate1RM(s.weight, s.reps); return rm > b.oneRM ? { date: w.started_at, weight: s.weight, reps: s.reps, oneRM: rm } : b; }, { date: w.started_at, weight: 0, reps: 0, oneRM: 0 });
+        history.push(best);
       }
     }
     setExerciseHistory(history.slice(0, 10));
@@ -365,18 +400,24 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   function getDisplayValue(set: WorkoutSet, field: string): string {
     const key = `${set.id}-${field}`;
     if (draftValues[key] !== undefined) return draftValues[key];
-    return String(set[field as keyof WorkoutSet] ?? "");
+    const val = set[field as keyof WorkoutSet];
+    if (field === "weight" && (val === 0 || val === null || val === undefined)) return "";
+    return String(val ?? "");
   }
 
-  function getVsLast(exerciseId: string, setNumber: number, field: "weight" | "reps"): { diff: number; status: "above" | "below" | "same" | "none" } {
-    const lastSets = lastSessionSets[exerciseId];
-    if (!lastSets) return { diff: 0, status: "none" };
-    const lastSet = lastSets.find((s) => s.setNumber === setNumber);
-    if (!lastSet) return { diff: 0, status: "none" };
-    const currentVal = field === "weight" ? lastSet.weight : lastSet.reps;
-    const diff = 0;
-    return { diff: 0, status: "none" };
+  async function saveSetNote(setId: string, note: string) {
+    if (isOnline) await supabase.from("workout_sets").update({ note }).eq("id", setId);
+    else { await queueSync({ table: "workout_sets", operation: "update", payload: { note }, where: { id: setId } }); setPendingSyncs((p) => p + 1); }
+    setGroups(groups.map((g) => ({ ...g, sets: g.sets.map((s) => (s.id === setId ? { ...s, note } : s)) })));
+    setNoteEditingSet(null);
   }
+
+  async function saveSetRPE(setId: string, rpe: number) {
+    if (isOnline) await supabase.from("workout_sets").update({ rpe }).eq("id", setId);
+    else { await queueSync({ table: "workout_sets", operation: "update", payload: { rpe }, where: { id: setId } }); setPendingSyncs((p) => p + 1); }
+    setGroups(groups.map((g) => ({ ...g, sets: g.sets.map((s) => (s.id === setId ? { ...s, rpe } : s)) })));
+  }
+
 
   function startRestTimer(exerciseId: string, restSec: number) {
     const saved = customRestSec[exerciseId];
@@ -434,16 +475,27 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
   async function finishWorkout() {
     const completedAt = new Date().toISOString();
-    if (isOnline) await supabase.from("workouts").update({ status: "completed", completed_at: completedAt }).eq("id", workoutId);
-    else { await queueSync({ table: "workouts", operation: "update", payload: { status: "completed", completed_at: completedAt }, where: { id: workoutId } }); setPendingSyncs((p) => p + 1); }
+    const completedCount = groups.reduce((acc, g) => acc + g.sets.filter((s) => s.completed).length, 0);
+    const totalSets = groups.reduce((acc, g) => acc + g.sets.length, 0);
+    const isPartial = completedCount > 0 && completedCount < totalSets;
+    const status = isPartial ? "partial" : "completed";
+    if (isOnline) await supabase.from("workouts").update({ status, completed_at: completedAt }).eq("id", workoutId);
+    else { await queueSync({ table: "workouts", operation: "update", payload: { status, completed_at: completedAt }, where: { id: workoutId } }); setPendingSyncs((p) => p + 1); }
     triggerHaptic("success");
     setShowConfetti(true);
     setShowSummary(true);
   }
 
   async function cancelWorkout() {
-    if (isOnline) { await supabase.from("workout_sets").delete().eq("workout_id", workoutId); await supabase.from("workouts").delete().eq("id", workoutId); }
-    else { await queueSync({ table: "workout_sets", operation: "delete", where: { workout_id: workoutId } }); await queueSync({ table: "workouts", operation: "delete", where: { id: workoutId } }); setPendingSyncs((p) => p + 2); }
+    const completedCount = groups.reduce((acc, g) => acc + g.sets.filter((s) => s.completed).length, 0);
+    if (completedCount === 0) {
+      if (isOnline) { await supabase.from("workout_sets").delete().eq("workout_id", workoutId); await supabase.from("workouts").delete().eq("id", workoutId); }
+      else { await queueSync({ table: "workout_sets", operation: "delete", where: { workout_id: workoutId } }); await queueSync({ table: "workouts", operation: "delete", where: { id: workoutId } }); setPendingSyncs((p) => p + 2); }
+    } else {
+      const completedAt = new Date().toISOString();
+      if (isOnline) await supabase.from("workouts").update({ status: "partial", completed_at: completedAt }).eq("id", workoutId);
+      else { await queueSync({ table: "workouts", operation: "update", payload: { status: "partial", completed_at: completedAt }, where: { id: workoutId } }); setPendingSyncs((p) => p + 1); }
+    }
     router.push("/programs");
   }
 
@@ -459,8 +511,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           <h1 className="text-xl font-bold text-[hsl(var(--text-white))]">{programName}</h1>
         </div>
         {isReadOnly && (
-          <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full w-fit mb-4 ${workoutStatus === "completed" ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
-            {workoutStatus === "completed" ? "Terminée" : "Annulée"}
+          <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full w-fit mb-4 ${workoutStatus === "completed" ? "bg-green-500/10 text-green-500" : workoutStatus === "partial" ? "bg-orange-500/10 text-orange-500" : "bg-red-500/10 text-red-500"}`}>
+            {workoutStatus === "completed" ? "Terminée" : workoutStatus === "partial" ? "Partielle" : "Annulée"}
           </span>
         )}
         <div className="flex flex-col gap-5">
@@ -474,7 +526,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                 {group.sets.map((set) => (
                   <div key={set.id} className={`flex items-center gap-3 rounded-xl p-3 transition-all ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`}>
                     <span className="text-xs w-7 font-mono" style={{ color: "hsl(var(--muted-foreground-dim))" }}>S{set.set_number}</span>
-                    <span className="w-20 text-center font-semibold text-sm text-[hsl(var(--text-white))]">{displayWeight(set.weight)}</span>
+                    <span className="w-20 text-center font-semibold text-sm text-[hsl(var(--text-white))]">{set.weight > 0 ? displayWeight(set.weight) : "—"}</span>
                     <span className="w-16 text-center text-sm" style={{ color: "hsl(var(--icon-muted))" }}>{set.reps} reps</span>
                     {set.completed && <Check className="ml-auto h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />}
                   </div>
@@ -564,38 +616,46 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Smart progression */}
             {!isReadOnly && sp && (
-              <div className="mb-4 rounded-xl p-3 animate-scale-in" style={{ backgroundColor: "hsl(142 71% 45% / 0.05)", border: "1px solid hsl(142 71% 45% / 0.2)" }}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5" style={{ color: "hsl(142 71% 45%)" }} />
-                    <p className="text-xs font-semibold" style={{ color: "hsl(142 71% 45%)" }}>{t("workout_smart", lang)}</p>
+              <div className="mb-4 rounded-2xl p-4 animate-scale-in" style={{ backgroundColor: "hsl(142 71% 45% / 0.06)", border: "2px solid hsl(142 71% 45% / 0.25)" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)" }}>
+                    <Zap className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
                   </div>
-                  <div className="flex gap-2 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
+                  <p className="text-sm font-bold" style={{ color: "hsl(142 71% 45%)" }}>{t("workout_smart", lang)}</p>
+                  <div className="ml-auto flex gap-3 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
                     <span className="flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />{sp.analysis.current1RM} kg</span>
                     <span>{Math.round(sp.analysis.totalVolumeLastSession)} kg</span>
                     {sp.analysis.isPlateau && <span className="flex items-center gap-0.5" style={{ color: "hsl(0 72% 51%)" }}><AlertTriangle className="h-3 w-3" />{t("workout_plateau", lang)}</span>}
                   </div>
                 </div>
-                <div className="flex gap-2 mb-2">
-                  <button onClick={() => applyProgression(currentGroup.exercise.id, sp.primary.type)} className="flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold active:scale-95 transition-all"
+                <div className="grid grid-cols-2 gap-2.5 mb-2">
+                  <button
+                    onClick={() => applyProgression(currentGroup.exercise.id, sp.primary.type)}
+                    className="rounded-xl px-3 py-3.5 text-left active:scale-[0.97] transition-all"
                     style={appliedProgression[currentGroup.exercise.id] === "reps"
-                      ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)", color: "white" }
-                      : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))", color: "hsl(var(--inactive-btn-text-light))" }
+                      ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)", border: "2px solid hsl(142 71% 45% / 0.4)" }
+                      : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1.5px solid hsl(var(--inactive-btn-border))" }
                     }
                   >
-                    {sp.primary.label}
+                    <p className="text-sm font-bold mb-1" style={appliedProgression[currentGroup.exercise.id] === "reps" ? { color: "white" } : { color: "hsl(var(--text-white))" }}>🛡️ Conservateur</p>
+                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === "reps" ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>Basé sur tes dernières séances · Progression stable</p>
+                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === "reps" ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.primary.label}</p>
                   </button>
-                  <button onClick={() => applyProgression(currentGroup.exercise.id, sp.alternative.type)} className="flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold active:scale-95 transition-all"
+                  <button
+                    onClick={() => applyProgression(currentGroup.exercise.id, sp.alternative.type)}
+                    className="rounded-xl px-3 py-3.5 text-left active:scale-[0.97] transition-all"
                     style={appliedProgression[currentGroup.exercise.id] === "weight"
-                      ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)", color: "white" }
-                      : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))", color: "hsl(var(--inactive-btn-text-light))" }
+                      ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)", border: "2px solid hsl(142 71% 45% / 0.4)" }
+                      : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1.5px solid hsl(var(--inactive-btn-border))" }
                     }
                   >
-                    {sp.alternative.label}
+                    <p className="text-sm font-bold mb-1" style={appliedProgression[currentGroup.exercise.id] === "weight" ? { color: "white" } : { color: "hsl(var(--text-white))" }}>🚀 Ambitieux</p>
+                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === "weight" ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>Pour progresser plus vite · Si tu te sens fort</p>
+                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === "weight" ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.alternative.label}</p>
                   </button>
                 </div>
                 {sp.deload && (
-                  <button onClick={() => applyProgression(currentGroup.exercise.id, "deload")} className="w-full rounded-xl px-3 py-2.5 text-xs font-semibold active:scale-95 transition-all" style={{ backgroundColor: "hsl(0 72% 51% / 0.08)", border: "1px solid hsl(0 72% 51% / 0.2)", color: "hsl(0 72% 51%)" }}>
+                  <button onClick={() => applyProgression(currentGroup.exercise.id, "deload")} className="w-full rounded-xl px-3 py-3 text-xs font-semibold active:scale-95 transition-all" style={{ backgroundColor: "hsl(0 72% 51% / 0.08)", border: "1px solid hsl(0 72% 51% / 0.2)", color: "hsl(0 72% 51%)" }}>
                     {sp.deload.label}
                   </button>
                 )}
@@ -647,47 +707,141 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                 const hasComparison = lastSet !== undefined;
 
                 return (
-                  <div key={set.id} className={`flex items-center gap-3 rounded-2xl p-4 transition-all animate-scale-in ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`} style={{ animationDelay: `${idx * 0.05}s` }}>
-                    <span className="text-xs w-8 font-mono text-center" style={{ color: "hsl(var(--muted-foreground-dim))" }}>S{set.set_number}</span>
-                    <div className="flex-1 flex items-center gap-3">
-                      <div className="flex-1 relative">
-                        <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Poids ({unit})</label>
-                        <input type="text" inputMode="decimal" value={getDisplayValue(set, "weight")} onChange={(e) => handleSetInput(set.id, "weight", e.target.value)} onBlur={() => handleSetBlur(set.id, "weight")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
-                        {hasComparison && weightDiff > 0 && (
-                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{weightDiff}</span>
-                        )}
-                        {hasComparison && weightDiff < 0 && (
-                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51% / 0.15)", color: "hsl(0 72% 51%)" }}>{weightDiff}</span>
+                  <div key={set.id}>
+                    <div className={`flex items-center gap-3 rounded-2xl p-4 transition-all animate-scale-in ${set.completed ? "border-green-500/30 bg-green-500/5" : "border-[hsl(var(--card-border))] bg-[hsl(var(--card-bg-muted))]"}`} style={{ animationDelay: `${idx * 0.05}s` }}>
+                      <span className="text-xs w-8 font-mono text-center" style={{ color: "hsl(var(--muted-foreground-dim))" }}>S{set.set_number}</span>
+                      <div className="flex-1 flex items-center gap-3">
+                        <div className="flex-1 relative">
+                          <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_weight_placeholder", lang)}</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={getDisplayValue(set, "weight")}
+                            placeholder={t("workout_weight_placeholder", lang)}
+                            onChange={(e) => handleSetInput(set.id, "weight", e.target.value)}
+                            onBlur={() => handleSetBlur(set.id, "weight")}
+                            onFocus={() => {
+                              if (set.weight === 0 && !dismissedTooltips.has(currentGroup.exercise.id)) {
+                                setShowWeightTooltip(currentGroup.exercise.id);
+                              }
+                            }}
+                            className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all placeholder:text-[hsl(var(--muted-foreground-dim))] placeholder:font-normal placeholder:text-sm"
+                            style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}
+                          />
+                          {showWeightTooltip === currentGroup.exercise.id && !dismissedTooltips.has(currentGroup.exercise.id) && (
+                            <div className="absolute -top-12 left-0 right-0 animate-scale-in">
+                              <div className="rounded-lg px-3 py-2 text-[11px] text-center leading-tight" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)", border: "1px solid hsl(142 71% 45% / 0.2)" }}>
+                                {t("workout_enter_weight", lang)}
+                                <button
+                                  onClick={() => {
+                                    const next = new Set(dismissedTooltips);
+                                    next.add(currentGroup.exercise.id);
+                                    setDismissedTooltips(next);
+                                    setShowWeightTooltip(null);
+                                    try { localStorage.setItem("smartload-dismissed-weight-tooltips", JSON.stringify([...next])); } catch {}
+                                  }}
+                                  className="ml-1 font-bold"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {hasComparison && weightDiff > 0 && (
+                            <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{weightDiff}</span>
+                          )}
+                          {hasComparison && weightDiff < 0 && (
+                            <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51% / 0.15)", color: "hsl(0 72% 51%)" }}>{weightDiff}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 relative">
+                          <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_reps", lang)}</label>
+                          <input type="text" inputMode="numeric" value={getDisplayValue(set, "reps")} onChange={(e) => handleSetInput(set.id, "reps", e.target.value)} onBlur={() => handleSetBlur(set.id, "reps")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
+                          {hasComparison && repsDiff > 0 && (
+                            <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{repsDiff}</span>
+                          )}
+                          {hasComparison && repsDiff < 0 && (
+                            <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51% / 0.15)", color: "hsl(0 72% 51%)" }}>{repsDiff}</span>
+                          )}
+                        </div>
+                        {showRPE && !isReadOnly && (
+                          <div className="w-16">
+                            <label className="text-[10px] block mb-1 text-center" style={{ color: "hsl(var(--muted-foreground-dim))" }}>RPE</label>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              max={10}
+                              value={set.rpe || ""}
+                              placeholder="—"
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value);
+                                if (!isNaN(v) && v >= 1 && v <= 10) saveSetRPE(set.id, v);
+                                else if (e.target.value === "") saveSetRPE(set.id, 0 as unknown as number);
+                              }}
+                              className="w-full rounded-xl px-2 py-2.5 text-center text-sm font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all placeholder:text-[hsl(var(--muted-foreground-dim))] placeholder:font-normal"
+                              style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}
+                            />
+                          </div>
                         )}
                       </div>
-                      <div className="flex-1 relative">
-                        <label className="text-[10px] block mb-1" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("workout_reps", lang)}</label>
-                        <input type="text" inputMode="numeric" value={getDisplayValue(set, "reps")} onChange={(e) => handleSetInput(set.id, "reps", e.target.value)} onBlur={() => handleSetBlur(set.id, "reps")} className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} />
-                        {hasComparison && repsDiff > 0 && (
-                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{repsDiff}</span>
-                        )}
-                        {hasComparison && repsDiff < 0 && (
-                          <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51% / 0.15)", color: "hsl(0 72% 51%)" }}>{repsDiff}</span>
-                        )}
-                      </div>
+                      {!isReadOnly && (
+                        <button
+                          onClick={() => {
+                            if (noteEditingSet === set.id) {
+                              saveSetNote(set.id, noteInputValue);
+                            } else {
+                              setNoteEditingSet(set.id);
+                              setNoteInputValue(set.note || "");
+                            }
+                          }}
+                          className="p-2 rounded-lg active:scale-95 transition-all"
+                          style={{ color: set.note ? "hsl(142 71% 45%)" : "hsl(var(--muted-foreground-dim))" }}
+                        >
+                          <StickyNote className="h-4 w-4" />
+                        </button>
+                      )}
+                      {isReadOnly && set.note && (
+                        <span className="text-xs px-2 py-1 rounded-lg truncate max-w-[120px]" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)", color: "hsl(142 71% 45%)" }}>
+                          📝 {set.note}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => {
+                          const wasCompleted = set.completed;
+                          updateSet(set.id, "completed", !set.completed);
+                          if (!wasCompleted) {
+                            triggerHaptic("success");
+                            setCompletedSetAnimations((prev) => ({ ...prev, [set.id]: true }));
+                            setTimeout(() => setCompletedSetAnimations((prev) => ({ ...prev, [set.id]: false })), 600);
+                            if (set.rest_sec > 0) openCustomTimer(currentGroup.exercise.id, set.rest_sec);
+                            checkForPR(currentGroup.exercise.id, currentGroup.exercise.name);
+                          }
+                        }}
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center active:scale-95 transition-all ${set.completed ? "text-[hsl(var(--text-white))]" : "border border-[hsl(var(--card-border))] text-[hsl(var(--text-white-40))]"}`}
+                        style={set.completed ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)" } : {}}
+                      >
+                        <Check className="h-5 w-5" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        const wasCompleted = set.completed;
-                        updateSet(set.id, "completed", !set.completed);
-                        if (!wasCompleted) {
-                          triggerHaptic("success");
-                          setCompletedSetAnimations((prev) => ({ ...prev, [set.id]: true }));
-                          setTimeout(() => setCompletedSetAnimations((prev) => ({ ...prev, [set.id]: false })), 600);
-                          if (set.rest_sec > 0) openCustomTimer(currentGroup.exercise.id, set.rest_sec);
-                          checkForPR(currentGroup.exercise.id, currentGroup.exercise.name);
-                        }
-                      }}
-                      className={`w-12 h-12 rounded-xl flex items-center justify-center active:scale-95 transition-all ${set.completed ? "text-[hsl(var(--text-white))]" : "border border-[hsl(var(--card-border))] text-[hsl(var(--text-white-40))]"}`}
-                      style={set.completed ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 12px hsl(142 71% 45% / 0.25)" } : {}}
-                    >
-                      <Check className="h-5 w-5" />
-                    </button>
+                    {noteEditingSet === set.id && !isReadOnly && (
+                      <div className="mt-2 mx-1 animate-scale-in">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={noteInputValue}
+                            onChange={(e) => setNoteInputValue(e.target.value)}
+                            placeholder="Note sur cette série..."
+                            className="flex-1 rounded-xl px-3 py-2.5 text-sm focus:outline-none transition-all placeholder:text-[hsl(var(--muted-foreground-dim))]"
+                            style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(142 71% 45% / 0.3)", color: "hsl(var(--text-white))" }}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveSetNote(set.id, noteInputValue); if (e.key === "Escape") setNoteEditingSet(null); }}
+                            autoFocus
+                          />
+                          <button onClick={() => saveSetNote(set.id, noteInputValue)} className="rounded-xl px-4 py-2.5 text-xs font-semibold active:scale-95 transition-all" style={{ background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", color: "white" }}>OK</button>
+                          <button onClick={() => setNoteEditingSet(null)} className="rounded-xl px-3 py-2.5 text-xs active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", color: "hsl(var(--muted-foreground))" }}>✕</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -783,6 +937,28 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <X className="h-4 w-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* PR Badge — centered overlay with confetti */}
+      {showPRBadge && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center pointer-events-none">
+          <div className="animate-scale-in" style={{ animation: "scaleInFade 0.4s ease-out forwards" }}>
+            <div className="rounded-2xl px-8 py-5 text-center shadow-2xl" style={{ backgroundColor: "#22c55e", boxShadow: "0 0 60px hsl(142 71% 45% / 0.5)" }}>
+              <p className="text-2xl font-bold text-white mb-1">🏆 Nouveau record !</p>
+              <p className="text-lg font-semibold text-white/90">{prBadgeInfo.oneRM} kg</p>
+              <p className="text-xs text-white/70 mt-1">{prBadgeInfo.exercise}</p>
+            </div>
+          </div>
+          <style>{`
+            @keyframes scaleInFade {
+              0% { transform: scale(0.5); opacity: 0; }
+              20% { transform: scale(1.05); opacity: 1; }
+              40% { transform: scale(1); opacity: 1; }
+              80% { transform: scale(1); opacity: 1; }
+              100% { transform: scale(0.95); opacity: 0; }
+            }
+          `}</style>
         </div>
       )}
 

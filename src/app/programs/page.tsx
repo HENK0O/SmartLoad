@@ -10,6 +10,7 @@ import Link from "next/link";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ListSkeleton } from "@/components/Skeleton";
 import { t } from "@/lib/i18n";
+import { STATIC_TEMPLATES } from "@/lib/static-templates";
 import {
   Plus,
   Pencil,
@@ -344,6 +345,54 @@ export default function ProgramsPage() {
     setActiveTab("programs");
   }
 
+  async function createProgramFromStaticTemplate(tmpl: typeof STATIC_TEMPLATES[0]) {
+    if (programs.length >= MAX_PROGRAMS) {
+      setError(t("programs_unlimited_msg", lang));
+      return;
+    }
+    const { data: program } = await supabase
+      .from("programs")
+      .insert({ user_id: user!.id, name: lang === "en" ? tmpl.nameEn : tmpl.name })
+      .select()
+      .single();
+    if (!program) return;
+
+    const { data: allExercises } = await supabase.from("exercises").select("id, name");
+    const exerciseMap: Record<string, string> = {};
+    if (allExercises) {
+      for (const ex of allExercises) {
+        exerciseMap[ex.name.toLowerCase()] = ex.id;
+      }
+    }
+
+    let sortOrder = 0;
+    for (const day of tmpl.days) {
+      for (const ex of day.exercises) {
+        const exId = exerciseMap[ex.name.toLowerCase()];
+        if (exId) {
+          const repMatch = ex.reps.match(/(\d+)/);
+          const repNum = repMatch ? parseInt(repMatch[1]) : 10;
+          const repRangeMin = repNum;
+          const repRangeMax = repNum + 4;
+          await supabase.from("program_exercises").insert({
+            program_id: program.id,
+            exercise_id: exId,
+            target_sets: ex.sets,
+            target_reps: repNum,
+            target_weight: 0,
+            rep_range_min: repRangeMin,
+            rep_range_max: repRangeMax,
+            sort_order: sortOrder++,
+          });
+        }
+      }
+    }
+
+    const newProgram = { id: program.id, name: lang === "en" ? tmpl.nameEn : tmpl.name, created_at: new Date().toISOString() };
+    setPrograms([newProgram, ...programs]);
+    setActiveTab("programs");
+  }
+
   async function deleteTemplate(id: string) {
     await supabase.from("program_template_exercises").delete().eq("template_id", id);
     await supabase.from("program_templates").delete().eq("id", id);
@@ -436,8 +485,8 @@ export default function ProgramsPage() {
       </button>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-5 pr-14">
-        <div className="flex items-center gap-3 pr-12 md:pr-0">
+      <div className="flex items-center mb-5 pr-14">
+        <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{
@@ -456,17 +505,6 @@ export default function ProgramsPage() {
             </p>
           </div>
         </div>
-        <Link
-          href="/workout"
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-[hsl(var(--primary-foreground))] transition-all active:scale-95"
-          style={{
-            background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
-            boxShadow: "0 4px 16px hsl(var(--primary-glow))",
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          {t("programs_session", lang)}
-        </Link>
       </div>
 
       {/* Error banner */}
@@ -534,14 +572,14 @@ export default function ProgramsPage() {
           <div className="flex items-center justify-center gap-1 mb-1">
             <TrendingUp className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
           </div>
-          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{weeklyStats.volume > 0 ? (weeklyStats.volume >= 1000 ? `${(weeklyStats.volume / 1000).toFixed(1)}k` : weeklyStats.volume) : "—"}</p>
+          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{weeklyStats.volume >= 1000 ? `${(weeklyStats.volume / 1000).toFixed(1)}k` : weeklyStats.volume}</p>
           <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{t("dashboard_volume", lang)}</p>
         </div>
         <div className="rounded-xl p-3 text-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
           <div className="flex items-center justify-center gap-1 mb-1">
             <Trophy className="h-3.5 w-3.5" style={{ color: "hsl(var(--muted-foreground))" }} />
           </div>
-          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{bestPR ? bestPR.oneRM : "—"}</p>
+          <p className="text-xl font-bold text-[hsl(var(--foreground))]">{bestPR ? bestPR.oneRM : 0}</p>
           <p className="text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>1RM {unit}</p>
         </div>
         <div className="rounded-xl p-3 text-center relative" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
@@ -614,17 +652,27 @@ export default function ProgramsPage() {
                   style={{ borderColor: "hsl(var(--border))" }}
                 >
                   <div
-                    className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+                    className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
                     style={{ backgroundColor: "hsl(var(--primary) / 0.1)" }}
                   >
-                    <Dumbbell className="h-7 w-7 text-[hsl(var(--primary))]" />
+                    <Dumbbell className="h-8 w-8 text-[hsl(var(--primary))]" />
                   </div>
-                  <p className="text-[hsl(var(--muted-foreground))] mb-1">
+                  <p className="text-base font-semibold text-[hsl(var(--foreground))] mb-1">
                     {t("programs_none", lang)}
                   </p>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))] opacity-60">
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] opacity-60 mb-5">
                     {t("programs_empty_desc", lang)}
                   </p>
+                  <button
+                    onClick={() => setShowForm(true)}
+                    className="rounded-xl px-6 py-3 text-sm font-semibold text-[hsl(var(--primary-foreground))] active:scale-95 transition-all"
+                    style={{
+                      background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
+                      boxShadow: "0 4px 16px hsl(var(--primary-glow))",
+                    }}
+                  >
+                    {t("programs_create", lang)}
+                  </button>
                 </div>
               )}
 
@@ -812,87 +860,57 @@ export default function ProgramsPage() {
         </div>
       )}
 
-      {/* Templates Tab */}
+      {/* Templates Tab — STATIC + USER */}
       {activeTab === "templates" && (
         <div className="flex flex-col gap-3">
-          {loadingTemplates ? (
-            <ListSkeleton count={3} />
-          ) : (
-            <>
-              {templates.length === 0 && (
-                <div
-                  className="text-center py-16 rounded-2xl border border-dashed animate-fade-in"
-                  style={{ borderColor: "hsl(var(--border))" }}
-                >
-                  <div
-                    className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                    style={{ backgroundColor: "hsl(var(--primary) / 0.1)" }}
-                  >
-                    <Copy className="h-7 w-7 text-[hsl(var(--primary))]" />
+          {/* Templates officiels */}
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))] mt-1 mb-1">{lang === "en" ? "Official templates" : "Templates officiels"}</h3>
+          {STATIC_TEMPLATES.map((tmpl, i) => {
+            const levelColor = tmpl.level === "debutant" ? { bg: "hsl(199 89% 48% / 0.15)", text: "hsl(199 89% 48%)" } : tmpl.level === "intermediaire" ? { bg: "hsl(142 71% 45% / 0.15)", text: "hsl(142 71% 45%)" } : { bg: "hsl(0 72% 51% / 0.15)", text: "hsl(0 72% 51%)" };
+            return (
+              <div key={tmpl.id} className="rounded-2xl border p-4 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--card-border))", animationDelay: `${i * 50}ms` }}>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <p className="font-semibold text-[hsl(var(--foreground))]">{lang === "en" ? tmpl.nameEn : tmpl.name}</p>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: levelColor.bg, color: levelColor.text }}>{lang === "en" ? tmpl.levelLabelEn : tmpl.levelLabel}</span>
+                    </div>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">{lang === "en" ? tmpl.descriptionEn : tmpl.description} · {tmpl.daysPerWeek}j/semaine</p>
                   </div>
-                  <p className="text-[hsl(var(--muted-foreground))] mb-1">
-                    {t("programs_no_templates", lang)}
-                  </p>
-                  <p className="text-xs text-[hsl(var(--muted-foreground))] opacity-60">
-                    {t("programs_no_templates_desc", lang)}
-                  </p>
+                  <button
+                    onClick={() => createProgramFromStaticTemplate(tmpl)}
+                    className="flex-shrink-0 rounded-xl px-4 py-2.5 text-xs font-semibold text-[hsl(var(--primary-foreground))] active:scale-95 transition-all flex items-center gap-1.5"
+                    style={{ background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))", boxShadow: "0 2px 8px hsl(var(--primary-glow))" }}
+                  >
+                    {lang === "en" ? "Use" : "Utiliser"} <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              )}
+              </div>
+            );
+          })}
 
+          {/* User templates */}
+          {templates.length > 0 && (
+            <>
+              <h3 className="text-sm font-semibold text-[hsl(var(--foreground))] mt-4 mb-1">{lang === "en" ? "Your templates" : "Vos templates"}</h3>
               {templates.map((tmpl, i) => (
-                <div
-                  key={tmpl.id}
-                  className="rounded-2xl border p-4 animate-slide-up"
-                  style={{
-                    backgroundColor: "hsl(var(--card))",
-                    borderColor: "hsl(var(--card-border))",
-                    animationDelay: `${i * 50}ms`,
-                  }}
-                >
+                <div key={tmpl.id} className="rounded-2xl border p-4 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--card-border))", animationDelay: `${i * 50}ms` }}>
                   <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.05))",
-                      }}
-                    >
+                    <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center" style={{ background: "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.05))" }}>
                       <Sparkles className="h-5 w-5 text-[hsl(var(--primary))]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[hsl(var(--foreground))] truncate">
-                        {tmpl.name}
-                      </p>
+                      <p className="font-semibold text-[hsl(var(--foreground))] truncate">{tmpl.name}</p>
                       <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
                         {tmpl.exercise_count} {tmpl.exercise_count > 1 ? t("programs_exercises", lang) : t("programs_exercise", lang)}
-                        {tmpl.description && (
-                          <span className="text-[hsl(var(--muted))]">
-                            {" "}
-                            · {tmpl.description}
-                          </span>
-                        )}
+                        {tmpl.description && (<span className="text-[hsl(var(--muted))]"> · {tmpl.description}</span>)}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => createProgramFromTemplate(tmpl.id)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-[hsl(var(--primary-foreground))] active:scale-95 transition-all"
-                        style={{
-                          background:
-                            "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))",
-                          boxShadow: "0 2px 8px hsl(var(--primary-glow))",
-                        }}
-                      >
-                        {t("programs_use", lang)}
-                        <ArrowRight className="h-3.5 w-3.5" />
+                      <button onClick={() => createProgramFromTemplate(tmpl.id)} className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-[hsl(var(--primary-foreground))] active:scale-95 transition-all" style={{ background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))", boxShadow: "0 2px 8px hsl(var(--primary-glow))" }}>
+                        {t("programs_use", lang)}<ArrowRight className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        onClick={() => {
-                          setDeleteConfirm(tmpl.id);
-                          setDeleteType("template");
-                        }}
-                        className="p-2.5 rounded-xl text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))/10] active:scale-95 transition-all"
-                      >
+                      <button onClick={() => { setDeleteConfirm(tmpl.id); setDeleteType("template"); }} className="p-2.5 rounded-xl text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))/10] active:scale-95 transition-all">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>

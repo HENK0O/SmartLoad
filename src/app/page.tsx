@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useApp } from "@/lib/context";
 import { t } from "@/lib/i18n";
-import { ArrowRight, Dumbbell, TrendingUp, Clock, Shield, ChevronDown } from "lucide-react";
+import { ArrowRight, Dumbbell, TrendingUp, Clock, Shield } from "lucide-react";
 import { LangFlag } from "@/components/LangFlag";
 
 export default function Home() {
   const { user, loading } = useAuth();
   const { lang, setLang } = useApp();
   const router = useRouter();
-  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     if (!loading && user) router.push("/programs");
@@ -22,22 +21,15 @@ export default function Home() {
   if (loading) return <p className="p-6">Chargement...</p>;
   if (user) return null;
 
-  const getGreeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return t("home_greeting_morning", lang);
-    if (h < 18) return t("home_greeting_afternoon", lang);
-    return t("home_greeting_evening", lang);
-  };
-
   const features = [
-    { icon: TrendingUp, title: t("home_greeting_morning", lang) === "Good morning" ? "Progressive Overload" : "Surcharge progressive", desc: lang === "en" ? "The app auto-calculates your next ideal load." : "L'app calcule automatiquement ta prochaine charge idéale." },
-    { icon: Dumbbell, title: lang === "en" ? "Custom Programs" : "Programmes personnalisés", desc: lang === "en" ? "Create programs or use templates." : "Crée tes programmes ou utilise des templates." },
-    { icon: Clock, title: lang === "en" ? "Real-time Tracking" : "Suivi en temps réel", desc: lang === "en" ? "Rest timer, live stats, full history." : "Chrono de repos, stats live, historique complet." },
-    { icon: Shield, title: lang === "en" ? "Offline Mode" : "Mode hors-ligne", desc: lang === "en" ? "Train even without connection." : "Entraîne-toi même sans connexion." },
+    { icon: TrendingUp, title: lang === "en" ? "Progressive Overload" : "Surcharge progressive", desc: lang === "en" ? "The app auto-calculates your next ideal load based on your history." : "L'app calcule ta prochaine charge idéale à partir de ton historique." },
+    { icon: Dumbbell, title: lang === "en" ? "Custom Programs" : "Programmes personnalisés", desc: lang === "en" ? "Build your programs or start from proven templates." : "Crée tes programmes ou utilise des templates éprouvés." },
+    { icon: Clock, title: lang === "en" ? "Real-time Tracking" : "Suivi en temps réel", desc: lang === "en" ? "Rest timer, live stats, and full session history." : "Chrono de repos, stats live, et historique complet." },
+    { icon: Shield, title: lang === "en" ? "Offline Mode" : "Mode hors-ligne", desc: lang === "en" ? "Train anywhere, even without connection." : "Entraîne-toi partout, même sans connexion." },
   ];
 
   return (
-    <main className="flex min-h-screen flex-col relative overflow-hidden">
+    <main className="flex min-h-screen flex-col relative overflow-x-hidden overflow-y-auto">
       {/* Language switcher - top right */}
       <button
         onClick={() => setLang(lang === "fr" ? "en" : "fr")}
@@ -63,10 +55,13 @@ export default function Home() {
         />
       </div>
 
-      {/* Hero */}
+      {/* Hero - Conteneur principal centré */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-8">
-        <div className="text-center max-w-sm mx-auto">
+        <div className="text-center max-w-sm mx-auto w-full">
+
+          {/* PARTIE SUPÉRIEURE (Upper) : Logo et Titres */}
           <div className="animate-scale-in mb-8">
+            {/* Logo */}
             <div
               className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-float"
               style={{
@@ -81,14 +76,20 @@ export default function Home() {
                 <rect x="6.5" y="10" width="11" height="4" rx="1" />
               </svg>
             </div>
+            {/* Titre */}
             <h1 className="text-6xl font-black tracking-tight text-[hsl(var(--text-white))] mb-2">
               Smart<span style={{ color: "hsl(142 71% 45%)" }}>Load</span>
             </h1>
-            <p className="text-lg text-[hsl(var(--text-white-50))]">
-              {lang === "en" ? "Train smarter." : "Entraîne-toi plus intelligemment."}
+            {/* Sous-titres */}
+            <p className="text-lg text-[hsl(var(--text-white-50))] mb-1">
+              {lang === "en" ? "Train smarter. Progress faster." : "Entraîne-toi plus intelligemment."}
+            </p>
+            <p className="text-sm text-[hsl(var(--text-white-40))]">
+              {lang === "en" ? "The app that tells you exactly what to lift next." : "L'app qui te dit exactement quoi soulever ensuite."}
             </p>
           </div>
 
+          {/* Bouton */}
           <div className="animate-slide-up stagger-2">
             <Link
               href="/login"
@@ -102,22 +103,9 @@ export default function Home() {
               <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
-        </div>
-      </div>
 
-      {/* Features */}
-      <div className="relative z-10 px-5 pb-8 max-w-sm mx-auto w-full">
-        <button
-          onClick={() => setShowMore(!showMore)}
-          className="w-full flex items-center justify-center gap-2 py-3 text-sm font-medium mb-4 active:scale-95 transition-all"
-          style={{ color: "hsl(var(--muted-foreground))" }}
-        >
-          {showMore ? t("home_hide", lang) : t("home_features", lang)}
-          <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} />
-        </button>
-
-        {showMore && (
-          <div className="grid grid-cols-2 gap-3 animate-slide-up">
+          {/* FEATURES : La grille */}
+          <div className="mt-10 grid grid-cols-2 gap-3 text-left">
             {features.map((f, i) => (
               <div
                 key={f.title}
@@ -136,8 +124,10 @@ export default function Home() {
               </div>
             ))}
           </div>
-        )}
+
+        </div>
       </div>
+
     </main>
   );
 }

@@ -9,7 +9,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, Dumbbell, ArrowRight } from "l
 
 interface CalendarWorkout {
   id: string; program_name: string | null; status: string; started_at: string;
-  exercises: { name: string; sets: { reps: number; weight: number; completed: boolean }[] }[];
+  exercises: { name: string; sets: { reps: number; weight: number; completed: boolean; note?: string; rpe?: number }[] }[];
 }
 
 const MONTHS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -24,6 +24,7 @@ export default function CalendarPage() {
   const [selectedWorkouts, setSelectedWorkouts] = useState<CalendarWorkout[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [unit, setUnit] = useState<"kg" | "lbs">("kg");
+  const [hasAnyWorkout, setHasAnyWorkout] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
@@ -41,14 +42,17 @@ export default function CalendarPage() {
     if (workouts) {
       for (const w of workouts) {
         const dateKey = new Date(w.started_at).toLocaleDateString("fr-FR");
+        const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed, note, rpe, exercises(name)").eq("workout_id", w.id).order("set_number");
+        const completedCount = (sets || []).filter((s: { completed: boolean }) => s.completed).length;
+        if (completedCount === 0 && w.status !== "completed" && w.status !== "partial") continue;
         if (!byDate[dateKey]) byDate[dateKey] = [];
-        const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed, exercises(name)").eq("workout_id", w.id).order("set_number");
-        const exerciseMap: Record<string, { name: string; sets: { reps: number; weight: number; completed: boolean }[] }> = {};
-        if (sets) { for (const s of sets) { const exId = s.exercise_id; if (!exerciseMap[exId]) exerciseMap[exId] = { name: (s.exercises as unknown as { name: string })?.name ?? "Exercice", sets: [] }; exerciseMap[exId].sets.push({ reps: s.reps, weight: s.weight, completed: s.completed }); } }
+        const exerciseMap: Record<string, { name: string; sets: { reps: number; weight: number; completed: boolean; note?: string; rpe?: number }[] }> = {};
+        if (sets) { for (const s of sets) { const exId = s.exercise_id; if (!exerciseMap[exId]) exerciseMap[exId] = { name: (s.exercises as unknown as { name: string })?.name ?? "Exercice", sets: [] }; const ss = s as unknown as { reps: number; weight: number; completed: boolean; note?: string; rpe?: number }; exerciseMap[exId].sets.push({ reps: ss.reps, weight: ss.weight, completed: ss.completed, note: ss.note, rpe: ss.rpe }); } }
         byDate[dateKey].push({ id: w.id, program_name: (w.programs as unknown as { name: string } | null)?.name ?? "Séance libre", status: w.status, started_at: w.started_at, exercises: Object.values(exerciseMap) });
       }
     }
     setWorkoutsByDate(byDate);
+    if (Object.keys(byDate).length > 0) setHasAnyWorkout(true);
     setLoadingData(false);
   }
 
@@ -95,17 +99,31 @@ export default function CalendarPage() {
         {days.map((day, i) => {
           if (day === null) return <div key={`empty-${i}`} />;
           const key = dateKey(day);
-          const hasWorkout = workoutsByDate[key] && workoutsByDate[key].length > 0;
+          const dayWorkouts = workoutsByDate[key] || [];
+          const hasCompleted = dayWorkouts.some((w) => w.status === "completed");
+          const hasPartial = dayWorkouts.some((w) => w.status === "partial");
+          const hasWorkout = dayWorkouts.length > 0;
           const today = isToday(day);
           const selected = selectedDate === key;
           return (
             <button key={key} onClick={() => selectDay(day)} className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-sm transition-all active:scale-95 ${selected ? "bg-green-500 text-neutral-950 font-bold" : today ? "border-2 border-green-500 text-green-500" : hasWorkout ? "border-2 border-green-500/40 bg-green-500/10 text-green-500 font-semibold" : "text-neutral-400 hover:bg-neutral-900 border border-transparent"}`}>
               {day}
-              {hasWorkout && !selected && <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-green-500" />}
+              {!selected && hasCompleted && <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-green-500" />}
+              {!selected && hasPartial && !hasCompleted && <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-orange-500" />}
             </button>
           );
         })}
       </div>
+
+      {!hasAnyWorkout && !loadingData && (
+        <div className="text-center py-12 rounded-2xl border border-dashed mb-6" style={{ borderColor: "hsl(var(--border))" }}>
+          <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "hsl(var(--primary) / 0.1)" }}>
+            <CalendarDays className="h-8 w-8" style={{ color: "hsl(var(--primary))" }} />
+          </div>
+          <p className="text-base font-semibold text-[hsl(var(--foreground))] mb-1">Aucune séance planifiée</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Tes séances apparaîtront ici</p>
+        </div>
+      )}
 
       {selectedDate && (
         <div ref={detailRef} className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
@@ -115,7 +133,12 @@ export default function CalendarPage() {
           </div>
 
           {selectedWorkouts.length === 0 ? (
-            <p className="text-sm text-neutral-500">Aucune séance ce jour-là.</p>
+            <div className="text-center py-8">
+              <div className="w-12 h-12 rounded-xl mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: "hsl(var(--primary) / 0.1)" }}>
+                <CalendarDays className="h-6 w-6" style={{ color: "hsl(var(--primary))" }} />
+              </div>
+              <p className="text-sm text-neutral-500">Aucune séance ce jour-là.</p>
+            </div>
           ) : (
             <div className="flex flex-col gap-3">
               {selectedWorkouts.map((w) => (
@@ -125,16 +148,32 @@ export default function CalendarPage() {
                       {w.program_name}
                       <ArrowRight className="h-3 w-3" />
                     </Link>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${w.status === "completed" ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
-                      {w.status === "completed" ? "Terminée" : "Annulée"}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${w.status === "completed" ? "bg-green-500/10 text-green-500" : w.status === "partial" ? "bg-orange-500/10 text-orange-500" : "bg-blue-500/10 text-blue-500"}`}>
+                      {w.status === "completed" ? "Terminée" : w.status === "partial" ? "Partielle" : "En cours"}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {w.exercises.map((ex, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <Dumbbell className="h-3 w-3 text-neutral-600 shrink-0" />
-                        <span className="text-neutral-400">{ex.name}</span>
-                        <span className="text-green-500/80 ml-auto font-mono">{ex.sets.map((s) => `${s.reps}×${displayWeight(s.weight)}`).join(" · ")}</span>
+                      <div key={i} className="flex flex-col gap-1 py-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          <Dumbbell className="h-3 w-3 text-neutral-600 shrink-0" />
+                          <span className="text-neutral-400">{ex.name}</span>
+                          <span className="text-green-500/80 ml-auto font-mono">{ex.sets.map((s) => `${s.reps}×${displayWeight(s.weight)}`).join(" · ")}</span>
+                        </div>
+                        {ex.sets.some((s) => s.note || s.rpe) && (
+                          <div className="flex flex-wrap gap-1 ml-5">
+                            {ex.sets.filter((s) => s.note).map((s, si) => (
+                              <span key={si} className="text-[10px] px-1.5 py-0.5 rounded truncate max-w-[150px]" style={{ backgroundColor: "hsl(142 71% 45% / 0.1)", color: "hsl(142 71% 45%)" }}>
+                                📝 {s.note}
+                              </span>
+                            ))}
+                            {ex.sets.filter((s) => s.rpe).map((s, si) => (
+                              <span key={`rpe-${si}`} className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "hsl(199 89% 48% / 0.1)", color: "hsl(199 89% 48%)" }}>
+                                RPE {s.rpe}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

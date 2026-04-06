@@ -7,21 +7,41 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
 import type { ExerciseDef } from "@/lib/exercises";
 import Link from "next/link";
-import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Dumbbell } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Save, X, Dumbbell, Check, Clock, ChevronUp, ChevronDown } from "lucide-react";
 
 interface Exercise { id: string; name: string; muscle_group: string | null; }
 interface ProgramExercise {
   id: string; exercise_id: string; target_sets: number; target_reps: number;
-  target_weight: number; rep_range_min: number; rep_range_max: number;
+  target_weight: number | null; rep_range_min: number; rep_range_max: number;
   sort_order: number; exercises: Exercise;
 }
+
+interface TargetSet {
+  id: string; program_exercise_id: string; set_number: number;
+  target_reps: number; target_weight: number | null; sort_order: number;
+}
+
+const MUSCLE_COLORS: Record<string, { bg: string; text: string }> = {
+  "Pectoraux": { bg: "hsl(142 71% 45% / 0.15)", text: "hsl(142 71% 55%)" },
+  "Épaules": { bg: "hsl(45 93% 47% / 0.15)", text: "hsl(45 93% 57%)" },
+  "Triceps": { bg: "hsl(25 95% 53% / 0.15)", text: "hsl(25 95% 63%)" },
+  "Dos": { bg: "hsl(220 70% 50% / 0.15)", text: "hsl(220 70% 60%)" },
+  "Biceps": { bg: "hsl(280 65% 60% / 0.15)", text: "hsl(280 65% 70%)" },
+  "Quadriceps": { bg: "hsl(142 71% 45% / 0.15)", text: "hsl(142 71% 55%)" },
+  "Ischio-jambiers": { bg: "hsl(340 82% 52% / 0.15)", text: "hsl(340 82% 62%)" },
+  "Mollets": { bg: "hsl(199 89% 48% / 0.15)", text: "hsl(199 89% 58%)" },
+  "Abdominaux": { bg: "hsl(160 84% 39% / 0.15)", text: "hsl(160 84% 49%)" },
+};
 
 export default function ProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [programId, setProgramId] = useState("");
   const [programName, setProgramName] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
   const [programExercises, setProgramExercises] = useState<ProgramExercise[]>([]);
+  const [targetSets, setTargetSets] = useState<Record<string, TargetSet[]>>({});
   const [loadingData, setLoadingData] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedBase, setSelectedBase] = useState<ExerciseDef | null>(null);
@@ -31,7 +51,8 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   const [editSets, setEditSets] = useState(4);
   const [editRepMin, setEditRepMin] = useState(8);
   const [editRepMax, setEditRepMax] = useState(12);
-  const [editWeight, setEditWeight] = useState(0);
+  const [editWeight, setEditWeight] = useState<number | null>(null);
+  const [inlineSetValues, setInlineSetValues] = useState<Record<string, string>>({});
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
   useEffect(() => { params.then((p) => setProgramId(p.id)); }, [params]);
@@ -43,7 +64,90 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     const { data: pe, error } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order");
     if (pe) { const mapped = (pe as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.rep_range_min || p.target_reps, rep_range_max: p.rep_range_max || p.target_reps + 4 })); setProgramExercises(mapped); }
     else if (error && error.code === "42703") { const { data: fallback } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order"); if (fallback) { const mapped = (fallback as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.target_reps, rep_range_max: p.target_reps + 4 })); setProgramExercises(mapped); } }
+    await loadTargetSets();
     setLoadingData(false);
+  }
+
+  async function loadTargetSets() {
+    if (programExercises.length === 0) return;
+    const allSets: Record<string, TargetSet[]> = {};
+    for (const pe of programExercises) {
+      const { data: sets } = await supabase.from("program_exercise_sets").select("id, program_exercise_id, set_number, target_reps, target_weight, sort_order").eq("program_exercise_id", pe.id).order("sort_order");
+      if (sets && sets.length > 0) {
+        allSets[pe.id] = sets as TargetSet[];
+      } else {
+        const defaults: TargetSet[] = [];
+        for (let i = 1; i <= pe.target_sets; i++) {
+          defaults.push({ id: `default-${pe.id}-${i}`, program_exercise_id: pe.id, set_number: i, target_reps: pe.rep_range_min, target_weight: pe.target_weight, sort_order: i - 1 });
+        }
+        allSets[pe.id] = defaults;
+      }
+    }
+    setTargetSets(allSets);
+  }
+
+  async function saveProgramName() {
+    if (!nameInput.trim()) { setEditingName(false); return; }
+    await supabase.from("programs").update({ name: nameInput.trim() }).eq("id", programId);
+    setProgramName(nameInput.trim());
+    setEditingName(false);
+  }
+
+  async function syncTargetSetsToDB(programExerciseId: string, sets: TargetSet[]) {
+    const realSets = sets.filter((s) => !s.id.startsWith("default-"));
+    if (realSets.length > 0) {
+      for (const s of realSets) {
+        await supabase.from("program_exercise_sets").update({ target_reps: s.target_reps, target_weight: s.target_weight }).eq("id", s.id);
+      }
+    }
+  }
+
+  async function addTargetSetRow(programExerciseId: string) {
+    const currentSets = targetSets[programExerciseId] || [];
+    const pe = programExercises.find((p) => p.id === programExerciseId);
+    if (!pe) return;
+    const nextNum = currentSets.length + 1;
+    const newSet: TargetSet = {
+      id: `default-${programExerciseId}-${nextNum}`,
+      program_exercise_id: programExerciseId,
+      set_number: nextNum,
+      target_reps: pe.rep_range_min,
+      target_weight: pe.target_weight,
+      sort_order: nextNum - 1,
+    };
+    const updated = [...currentSets, newSet];
+    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+    await supabase.from("program_exercises").update({ target_sets: nextNum }).eq("id", programExerciseId);
+    setProgramExercises(programExercises.map((p) => p.id === programExerciseId ? { ...p, target_sets: nextNum } : p));
+  }
+
+  async function removeTargetSetRow(programExerciseId: string, setIndex: number) {
+    const currentSets = targetSets[programExerciseId] || [];
+    const setToRemove = currentSets[setIndex];
+    if (setToRemove && !setToRemove.id.startsWith("default-")) {
+      await supabase.from("program_exercise_sets").delete().eq("id", setToRemove.id);
+    }
+    const updated = currentSets.filter((_, i) => i !== setIndex).map((s, i) => ({ ...s, set_number: i + 1, sort_order: i }));
+    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+    if (updated.length > 0) {
+      await supabase.from("program_exercises").update({ target_sets: updated.length }).eq("id", programExerciseId);
+      setProgramExercises(programExercises.map((p) => p.id === programExerciseId ? { ...p, target_sets: updated.length } : p));
+    }
+  }
+
+  function updateSetField(programExerciseId: string, setIndex: number, field: "target_reps" | "target_weight", value: number | null) {
+    const currentSets = targetSets[programExerciseId] || [];
+    const updated = currentSets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s);
+    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+  }
+
+  function commitSetField(programExerciseId: string, setIndex: number, field: "target_reps" | "target_weight", value: number | null) {
+    updateSetField(programExerciseId, setIndex, field, value);
+    const currentSets = targetSets[programExerciseId] || [];
+    const setToUpdate = currentSets[setIndex];
+    if (setToUpdate && !setToUpdate.id.startsWith("default-")) {
+      syncTargetSetsToDB(programExerciseId, currentSets);
+    }
   }
 
   async function getOrCreateExercise(name: string, muscleGroup: string): Promise<string> {
@@ -59,29 +163,55 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     const fullName = getFullName(selectedBase.baseName, support);
     const exerciseId = await getOrCreateExercise(fullName, selectedBase.muscleGroup);
     const order = programExercises.length;
-    const insertData: Record<string, unknown> = { program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: 0, rep_range_min: 8, rep_range_max: 12, sort_order: order };
+    const insertData: Record<string, unknown> = { program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: null, rep_range_min: 8, rep_range_max: 12, sort_order: order };
     const { data, error } = await supabase.from("program_exercises").insert(insertData).select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order").single();
     if (error && error.code === "42703") {
-      const { data: fallbackData } = await supabase.from("program_exercises").insert({ program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: 0, sort_order: order }).select("id, exercise_id, target_sets, target_reps, target_weight, sort_order").single();
+      const { data: fallbackData } = await supabase.from("program_exercises").insert({ program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: null, sort_order: order }).select("id, exercise_id, target_sets, target_reps, target_weight, sort_order").single();
       if (fallbackData) {
-        setProgramExercises([...programExercises, { ...fallbackData, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: 8, rep_range_max: 12 } as ProgramExercise]);
+        const newPe = { ...fallbackData, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: 8, rep_range_max: 12 } as ProgramExercise;
+        setProgramExercises([...programExercises, newPe]);
+        const defaults: TargetSet[] = [];
+        for (let i = 1; i <= 4; i++) defaults.push({ id: `default-${fallbackData.id}-${i}`, program_exercise_id: fallbackData.id, set_number: i, target_reps: 8, target_weight: null, sort_order: i - 1 });
+        setTargetSets({ ...targetSets, [fallbackData.id]: defaults });
         setSelectedBase(null); setShowSupportPopup(false); setShowAdd(false);
       }
       return;
     }
     if (data) {
-      setProgramExercises([...programExercises, { ...data, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: data.rep_range_min || 8, rep_range_max: data.rep_range_max || 12 } as ProgramExercise]);
+      const newPe = { ...data, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: data.rep_range_min || 8, rep_range_max: data.rep_range_max || 12 } as ProgramExercise;
+      setProgramExercises([...programExercises, newPe]);
+      const defaults: TargetSet[] = [];
+      for (let i = 1; i <= data.target_sets; i++) defaults.push({ id: `default-${data.id}-${i}`, program_exercise_id: data.id, set_number: i, target_reps: data.rep_range_min || 8, target_weight: data.target_weight, sort_order: i - 1 });
+      setTargetSets({ ...targetSets, [data.id]: defaults });
       setSelectedBase(null); setShowSupportPopup(false); setShowAdd(false);
     }
   }
 
   async function removeExercise(id: string) {
     await supabase.from("program_exercises").delete().eq("id", id);
+    const newSets = { ...targetSets };
+    delete newSets[id];
+    setTargetSets(newSets);
     setProgramExercises(programExercises.filter((pe) => pe.id !== id));
     setDeleteExerciseConfirm(null);
   }
 
   function startEdit(pe: ProgramExercise) { setEditingId(pe.id); setEditSets(pe.target_sets); setEditRepMin(pe.rep_range_min); setEditRepMax(pe.rep_range_max); setEditWeight(pe.target_weight); }
+
+  async function reorderExercise(id: string, direction: "up" | "down") {
+    const idx = programExercises.findIndex((pe) => pe.id === id);
+    if (direction === "up" && idx === 0) return;
+    if (direction === "down" && idx === programExercises.length - 1) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    const updated = [...programExercises];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    // Update sort_order locally
+    const withOrder = updated.map((pe, i) => ({ ...pe, sort_order: i }));
+    setProgramExercises(withOrder);
+    // Persist to DB
+    await supabase.from("program_exercises").update({ sort_order: swapIdx }).eq("id", id);
+    await supabase.from("program_exercises").update({ sort_order: idx }).eq("id", programExercises[swapIdx].id);
+  }
 
   async function saveEdit(id: string) {
     if (editRepMin > editRepMax) return;
@@ -93,88 +223,234 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
 
   function getGroupedExercises() {
     const groups: Record<string, ExerciseDef[]> = { PUSH: [], PULL: [], LEGS: [], AUTRES: [] };
-    for (const ex of EXERCISE_CATALOG) {
-      groups[ex.category].push(ex);
-    }
+    for (const ex of EXERCISE_CATALOG) { groups[ex.category].push(ex); }
     return groups;
   }
+
+  const totalSets = programExercises.reduce((sum, pe) => sum + (targetSets[pe.id]?.length || pe.target_sets), 0);
+  const estimatedMinutes = Math.round(totalSets * 2.5);
 
   if (loading || !user) return <p className="p-6">Chargement...</p>;
 
   return (
-    <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in">
-      <div className="flex items-center gap-3 mb-6">
-        <Link href="/programs" className="p-2 rounded-xl active:scale-95 transition-all text-[hsl(var(--text-white))]/50 hover:text-[hsl(var(--text-white))]" style={{ backgroundColor: "hsl(var(--card))" }}>
+    <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in max-w-2xl mx-auto w-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <Link href="/programs" className="p-2 rounded-xl active:scale-95 transition-all text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">{programName}</h1>
+        <div className="flex-1 min-w-0">
+          {editingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                className="flex-1 rounded-xl px-3 py-2 text-lg font-bold text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))/50] transition-all"
+                style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(142 71% 45% / 0.5)" }}
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") saveProgramName(); if (e.key === "Escape") setEditingName(false); }}
+              />
+              <button onClick={saveProgramName} className="p-2 rounded-lg active:scale-95 transition-all" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)" }}>
+                <Check className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
+              </button>
+              <button onClick={() => setEditingName(false)} className="p-2 rounded-lg text-[hsl(var(--muted-foreground))] active:scale-95 transition-all">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setEditingName(true); setNameInput(programName); }}
+              className="flex items-center gap-2 group active:scale-[0.98] transition-all w-full"
+            >
+              <h1 className="text-xl font-bold tracking-tight text-[hsl(var(--foreground))] truncate">{programName}</h1>
+              <Pencil className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }} />
+            </button>
+          )}
+        </div>
       </div>
 
       {loadingData ? (
-        <p className="text-[hsl(var(--text-white))]/50">Chargement...</p>
+        <p className="text-[hsl(var(--muted-foreground))]">Chargement...</p>
       ) : (
         <>
-          {programExercises.length === 0 && (
-            <div className="text-center py-16 animate-fade-in">
-              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}>
-                <Dumbbell className="h-8 w-8" style={{ color: "hsl(var(--muted-foreground-dimmer))" }} />
-              </div>
-              <p className="text-[hsl(var(--text-white))]/50 text-sm">Aucun exercice. Ajoute-en pour commencer !</p>
+          {/* Summary bar */}
+          {programExercises.length > 0 && (
+            <div className="rounded-xl px-4 py-3 mb-4 animate-slide-up" style={{ backgroundColor: "#1a1a1a", border: "1px solid hsl(var(--card-border))" }}>
+              <p className="text-sm font-semibold text-[hsl(var(--foreground))]">
+                {programExercises.length} exercice{programExercises.length > 1 ? "s" : ""} · {totalSets} série{totalSets > 1 ? "s" : ""} · ~{estimatedMinutes} min
+              </p>
             </div>
           )}
 
-          <div className="flex flex-col gap-2.5 mb-6">
-            {programExercises.map((pe, idx) => (
-              <div key={pe.id} className="rounded-2xl overflow-hidden animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", animationDelay: `${idx * 0.05}s` }}>
-                {editingId === pe.id ? (
-                  <div className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="font-semibold text-sm text-[hsl(var(--text-white))]">{pe.exercises.name}</p>
-                      <div className="flex gap-2">
-                        <button onClick={() => saveEdit(pe.id)} className="p-2 rounded-lg active:scale-95 transition-all" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)" }}>
-                          <Save className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
-                        </button>
-                        <button onClick={() => setEditingId(null)} className="p-2 rounded-lg text-[hsl(var(--text-white))]/50 hover:text-[hsl(var(--text-white))] active:scale-95 transition-all">
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { label: "Séries", value: editSets, set: setEditSets, min: 1, max: 10 },
-                        { label: "Reps", value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
-                        { label: "Reps max", value: editRepMax, set: setEditRepMax, min: editRepMin, max: 30 },
-                        { label: "Poids", value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
-                      ].map((field) => (
-                        <div key={field.label}>
-                          <label className="text-[10px] text-[hsl(var(--text-white))]/30 block mb-1">{field.label}</label>
-                          <input type="number" value={field.value} onChange={(e) => field.set(Math.max(field.min, parseFloat(e.target.value) || field.min))} className="w-full rounded-lg px-2 py-1.5 text-center text-sm text-[hsl(var(--text-white))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }} onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")} onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--inactive-btn-border))")} min={field.min} max={field.max} step={field.step || 1} />
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-[hsl(var(--text-white))]/30 mt-2">Double progression : {editRepMin}→{editRepMax} reps, puis +poids</p>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono w-5" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{idx + 1}</span>
-                      <div>
-                        <p className="font-semibold text-sm text-[hsl(var(--text-white))]">{pe.exercises.name}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-                          {pe.target_sets} × {pe.rep_range_min}–{pe.rep_range_max} reps @ {pe.target_weight} kg
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => startEdit(pe)} className="p-2 rounded-lg text-[hsl(var(--text-white))]/50 hover:text-[hsl(var(--text-white))] active:scale-95 transition-all"><Pencil className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => setDeleteExerciseConfirm(pe.id)} className="p-2 rounded-lg text-[hsl(var(--text-white))]/50 hover:text-red-500 active:scale-95 transition-all"><Trash2 className="h-3.5 w-3.5" /></button>
-                    </div>
-                  </div>
-                )}
+          {programExercises.length === 0 && (
+            <div className="text-center py-16 animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "#1a1a1a", border: "1px solid hsl(var(--card-border))" }}>
+                <Dumbbell className="h-8 w-8" style={{ color: "hsl(var(--muted-foreground-dimmer))" }} />
               </div>
-            ))}
+              <p className="text-[hsl(var(--muted-foreground))] text-sm">Aucun exercice. Ajoute-en pour commencer !</p>
+            </div>
+          )}
+
+          {/* Exercise cards */}
+          <div className="flex flex-col gap-3 mb-6">
+            {programExercises.map((pe, idx) => {
+              const sets = targetSets[pe.id] || [];
+              const muscleColor = MUSCLE_COLORS[pe.exercises.muscle_group || ""] || { bg: "hsl(var(--card-bg-muted))", text: "hsl(var(--muted-foreground))" };
+
+              return (
+                <div key={pe.id} className="animate-slide-up" style={{ backgroundColor: "#1a1a1a", borderRadius: "12px", padding: "16px", animationDelay: `${idx * 0.05}s` }}>
+                  {editingId === pe.id ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="font-bold text-[16px] text-white">{pe.exercises.name}</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => saveEdit(pe.id)} className="p-2 rounded-lg active:scale-95 transition-all" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)" }}>
+                            <Save className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
+                          </button>
+                          <button onClick={() => setEditingId(null)} className="p-2 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] active:scale-95 transition-all">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { label: "Séries", value: editSets, set: setEditSets, min: 1, max: 10 },
+                          { label: "Reps min", value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
+                          { label: "Reps max", value: editRepMax, set: setEditRepMax, min: editRepMin, max: 30 },
+                          { label: "Poids", value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
+                        ].map((field) => (
+                          <div key={field.label}>
+                            <label className="text-[10px] text-[hsl(var(--muted-foreground-dim))] block mb-1">{field.label}</label>
+                            <input type="number" value={field.value ?? ""} onChange={(e) => { const v = e.target.value; const fn = field.set as (val: number | null) => void; fn(v === "" ? null : Math.max(field.min, parseFloat(v) || field.min)); }} className="w-full rounded-lg px-2 py-1.5 text-center text-sm text-[hsl(var(--foreground))] focus:outline-none transition-all" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--inactive-btn-border))" }} onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")} onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--inactive-btn-border))")} min={field.min} max={field.max} step={field.step || 1} placeholder={field.label} />
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground-dim))] mt-2">Double progression : {editRepMin}→{editRepMax} reps, puis +poids</p>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Exercise header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, hsl(var(--primary) / 0.15), hsl(var(--primary) / 0.05))" }}>
+                            <Dumbbell className="h-4 w-4" style={{ color: "hsl(var(--primary))" }} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-[16px] text-white truncate">{pe.exercises.name}</p>
+                            <span className="inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full mt-1" style={{ backgroundColor: muscleColor.bg, color: muscleColor.text }}>
+                              {pe.exercises.muscle_group || "Autre"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              onClick={() => reorderExercise(pe.id, "up")}
+                              disabled={idx === 0}
+                              className="p-1 rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] active:scale-95 transition-all disabled:opacity-20"
+                            >
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => reorderExercise(pe.id, "down")}
+                              disabled={idx === programExercises.length - 1}
+                              className="p-1 rounded text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] active:scale-95 transition-all disabled:opacity-20"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <button onClick={() => startEdit(pe)} className="p-2 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] active:scale-95 transition-all">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => setDeleteExerciseConfirm(pe.id)} className="p-2 rounded-lg text-[hsl(var(--muted-foreground))] hover:text-red-500 active:scale-95 transition-all">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Sets list */}
+                      <div className="flex flex-col gap-2">
+                        {sets.map((s, si) => (
+                          <div key={s.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
+                            <span className="text-sm font-semibold text-white w-8 text-center">S{s.set_number}</span>
+                            <span className="text-[hsl(var(--muted-foreground-dim))] text-sm">|</span>
+                            <div className="flex-1 flex items-center gap-2">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                step={0.5}
+                                value={inlineSetValues[`${s.id}-weight`] !== undefined ? inlineSetValues[`${s.id}-weight`] : (s.target_weight ?? "")}
+                                onChange={(e) => {
+                                  const key = `${s.id}-weight`;
+                                  setInlineSetValues({ ...inlineSetValues, [key]: e.target.value });
+                                  const v = e.target.value === "" ? null : parseFloat(e.target.value);
+                                  if (v === null || (!isNaN(v) && v >= 0)) updateSetField(pe.id, si, "target_weight", v);
+                                }}
+                                onBlur={() => {
+                                  const raw = inlineSetValues[`${s.id}-weight`] ?? (s.target_weight === null ? "" : String(s.target_weight));
+                                  const v = raw === "" ? null : parseFloat(raw);
+                                  if (v === null || (!isNaN(v) && v >= 0)) commitSetField(pe.id, si, "target_weight", v);
+                                }}
+                                placeholder="Poids"
+                                className="flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold text-white focus:outline-none transition-all placeholder:text-[hsl(var(--muted-foreground-dim))] placeholder:font-normal"
+                                style={{ backgroundColor: "#2a2a2a", border: "1px solid hsl(var(--inactive-btn-border))" }}
+                                onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
+                              />
+                              <span className="text-[hsl(var(--muted-foreground-dim))] text-sm">|</span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={50}
+                                value={inlineSetValues[`${s.id}-reps`] !== undefined ? inlineSetValues[`${s.id}-reps`] : s.target_reps}
+                                onChange={(e) => {
+                                  const key = `${s.id}-reps`;
+                                  setInlineSetValues({ ...inlineSetValues, [key]: e.target.value });
+                                  const v = parseInt(e.target.value);
+                                  if (!isNaN(v) && v > 0) updateSetField(pe.id, si, "target_reps", v);
+                                }}
+                                onBlur={() => {
+                                  const v = parseInt(inlineSetValues[`${s.id}-reps`] ?? String(s.target_reps));
+                                  if (!isNaN(v) && v > 0) commitSetField(pe.id, si, "target_reps", v);
+                                }}
+                                className="w-16 rounded-lg px-2 py-1.5 text-sm font-semibold text-white text-center focus:outline-none transition-all"
+                                style={{ backgroundColor: "#2a2a2a", border: "1px solid hsl(var(--inactive-btn-border))" }}
+                                onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
+                              />
+                              <span className="text-[11px] text-[hsl(var(--muted-foreground-dim))]">reps</span>
+                            </div>
+                            {sets.length > 1 && (
+                              <button
+                                onClick={() => removeTargetSetRow(pe.id, si)}
+                                className="p-1 rounded transition-all hover:scale-110 active:scale-95"
+                                title="Supprimer la série"
+                              >
+                                <span className="text-base">🗑</span>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add set button */}
+                      <button
+                        onClick={() => addTargetSetRow(pe.id)}
+                        className="mt-3 w-full py-2 text-sm font-semibold flex items-center justify-center gap-1 active:scale-[0.98] transition-all"
+                        style={{ backgroundColor: "transparent", color: "hsl(142 71% 45%)" }}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Série
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
+          {/* Add exercise */}
           {showAdd && !showSupportPopup ? (
             <div className="flex flex-col gap-3 animate-slide-up">
               <select
@@ -190,7 +466,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                     }
                   }
                 }}
-                className="rounded-xl px-4 py-3 text-[hsl(var(--text-white))] focus:outline-none transition-all appearance-none"
+                className="rounded-xl px-4 py-3 text-[hsl(var(--foreground))] focus:outline-none transition-all appearance-none"
                 style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))" }}
                 onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
                 onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--card-border))")}
@@ -215,8 +491,8 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(var(--overlay))", backdropFilter: "blur(8px)" }}>
               <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", boxShadow: "0 24px 48px hsl(var(--shadow-heavy))" }}>
                 <div className="flex items-center justify-between mb-6">
-                  <p className="font-semibold text-lg text-[hsl(var(--text-white))]">{selectedBase.baseName}</p>
-                  <button onClick={() => setShowSupportPopup(false)} className="text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--icon-muted))" }}>Retour</button>
+                  <p className="font-semibold text-lg text-[hsl(var(--foreground))]">{selectedBase.baseName}</p>
+                  <button onClick={() => setShowSupportPopup(false)} className="text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>Retour</button>
                 </div>
                 <div className="flex flex-col gap-3">
                   {selectedBase.supports.map((support) => (

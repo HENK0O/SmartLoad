@@ -2,6 +2,7 @@ export interface WorkoutSetRecord {
   reps: number;
   weight: number;
   completed: boolean;
+  rpe?: number;
 }
 
 export interface ExerciseSession {
@@ -176,10 +177,55 @@ function analyzeProgression(
     (s) => s.reps >= targets.repRangeMax
   );
 
+  const avgRPE = completedSets.filter((s) => s.rpe && s.rpe > 0).length > 0
+    ? completedSets.reduce((sum, s) => sum + (s.rpe || 0), 0) / completedSets.filter((s) => s.rpe && s.rpe > 0).length
+    : 0;
+
   let primaryOption: ProgressionOption;
   let alternativeOption: ProgressionOption;
 
-  if (allSetsHitMax) {
+  if (avgRPE >= 9) {
+    const conservativeWeight = Math.round((targets.currentWeight + Math.max(0.5, baseIncrement * 0.5)) * 10) / 10;
+    primaryOption = {
+      type: "reps",
+      reps: bestLastReps + 1,
+      weight: targets.currentWeight,
+      estimated1RM: estimate1RM(targets.currentWeight, bestLastReps + 1),
+      totalVolume: targets.targetSets * (bestLastReps + 1) * targets.currentWeight,
+      label: `${targets.targetSets}×${bestLastReps + 1} à ${targets.currentWeight} kg`,
+      description: `RPE élevé (${avgRPE.toFixed(0)}/10) → progression conservatrice en reps`,
+    };
+    alternativeOption = {
+      type: "weight",
+      reps: targets.repRangeMin,
+      weight: conservativeWeight,
+      estimated1RM: estimate1RM(conservativeWeight, targets.repRangeMin),
+      totalVolume: targets.targetSets * targets.repRangeMin * conservativeWeight,
+      label: `${targets.targetSets}×${targets.repRangeMin} à ${conservativeWeight} kg`,
+      description: `RPE élevé → augmentation légère du poids (+${Math.round((conservativeWeight - targets.currentWeight) * 10) / 10} kg)`,
+    };
+  } else if (avgRPE > 0 && avgRPE <= 7) {
+    const ambitiousWeight = Math.round((targets.currentWeight + baseIncrement * 1.5) * 10) / 10;
+    primaryOption = {
+      type: "weight",
+      reps: targets.repRangeMin,
+      weight: ambitiousWeight,
+      estimated1RM: estimate1RM(ambitiousWeight, targets.repRangeMin),
+      totalVolume: targets.targetSets * targets.repRangeMin * ambitiousWeight,
+      label: `${targets.targetSets}×${targets.repRangeMin} à ${ambitiousWeight} kg`,
+      description: `RPE faible (${avgRPE.toFixed(0)}/10) → progression ambitieuse prioritaire`,
+    };
+    const repsOption = allSetsHitMax || bestLastReps >= targets.repRangeMax ? targets.repRangeMax + 1 : bestLastReps + 1;
+    alternativeOption = {
+      type: "reps",
+      reps: repsOption,
+      weight: targets.currentWeight,
+      estimated1RM: estimate1RM(targets.currentWeight, repsOption),
+      totalVolume: targets.targetSets * repsOption * targets.currentWeight,
+      label: `${targets.targetSets}×${repsOption} à ${targets.currentWeight} kg`,
+      description: "Alternative : progresser en reps",
+    };
+  } else if (allSetsHitMax) {
     const newWeight = Math.round((targets.currentWeight + adaptiveIncrement) * 10) / 10;
     primaryOption = {
       type: "weight",

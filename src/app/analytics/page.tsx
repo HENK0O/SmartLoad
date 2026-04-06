@@ -16,6 +16,8 @@ interface VolumeData { date: string; volume: number; label: string; }
 interface FrequencyData { day: string; count: number; }
 interface ExerciseTrend { exerciseName: string; data: { date: string; weight: number; reps: number; oneRM: number }[]; }
 
+type PeriodFilter = "7d" | "30d" | "90d" | "all";
+
 export default function AnalyticsPage() {
   const { user, loading } = useAuth();
   const { lang } = useApp();
@@ -28,23 +30,58 @@ export default function AnalyticsPage() {
   const [totalVolume, setTotalVolume] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
   const [unit, setUnit] = useState<"kg" | "lbs">("kg");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("7d");
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
-  useEffect(() => { if (!user) return; loadData(); loadUnit(); }, [user]);
+  useEffect(() => { if (!user) return; loadData(); loadUnit(); }, [user, periodFilter]);
 
   async function loadUnit() { const { data } = await supabase.from("profiles").select("unit").eq("id", user!.id).single(); if (data) setUnit(data.unit as "kg" | "lbs"); }
 
   function displayWeight(kg: number): string { if (unit === "lbs") return Math.round(kg * 2.20462 * 10) / 10 + " lbs"; return kg + " kg"; }
 
+  function getDateRange(): { start: Date; end: Date } {
+    const end = new Date();
+    const start = new Date();
+    if (periodFilter === "7d") start.setDate(end.getDate() - 7);
+    else if (periodFilter === "30d") start.setDate(end.getDate() - 30);
+    else if (periodFilter === "90d") start.setDate(end.getDate() - 90);
+    else start.setFullYear(2020, 0, 1);
+    return { start, end };
+  }
+
   async function loadData() {
-    const { data: workouts } = await supabase.from("workouts").select("id, started_at, status").eq("user_id", user!.id).eq("status", "completed").order("started_at", { ascending: true });
-    if (!workouts || workouts.length === 0) { setLoadingData(false); return; }
+    const { start, end } = getDateRange();
+    const { data: workouts } = await supabase.from("workouts").select("id, started_at, status").eq("user_id", user!.id).eq("status", "completed").gte("started_at", start.toISOString()).lt("started_at", new Date(end.getTime() + 86400000).toISOString()).order("started_at", { ascending: true });
+    if (!workouts || workouts.length === 0) { setLoadingData(false); setTotalWorkouts(0); setTotalVolume(0); setPRs([]); setVolumeData([]); setFrequencyData([]); setExerciseTrends([]); return; }
     setTotalWorkouts(workouts.length);
-    const allSets: { workout_id: string; exercise_id: string; reps: number; weight: number; completed: boolean; date: string }[] = [];
-    for (const w of workouts) {
-      const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed").eq("workout_id", w.id);
-      if (sets) for (const s of sets) { if (s.completed) allSets.push({ workout_id: w.id, exercise_id: s.exercise_id, reps: s.reps, weight: s.weight, completed: s.completed, date: w.started_at }); }
+
+// ✅ Une seule requête pour toutes les séries
+const workoutIds = workouts.map(w => w.id);
+const { data: rawSets } = await supabase
+  .from("workout_sets")
+  .select("workout_id, exercise_id, reps, weight, completed")
+  .in("workout_id", workoutIds);
+
+// Construire un map workoutId → started_at pour retrouver la date
+const workoutDateMap: Record<string, string> = {};
+for (const w of workouts) workoutDateMap[w.id] = w.started_at;
+
+const allSets: { workout_id: string; exercise_id: string; reps: number; weight: number; completed: boolean; date: string }[] = [];
+if (rawSets) {
+  for (const s of rawSets) {
+    if (s.completed) {
+      allSets.push({
+        workout_id: s.workout_id,
+        exercise_id: s.exercise_id,
+        reps: s.reps,
+        weight: s.weight,
+        completed: s.completed,
+        date: workoutDateMap[s.workout_id],
+      });
     }
+  }
+}
+
     const exerciseMap: Record<string, { name: string; muscleGroup: string | null }> = {};
     const uniqueExerciseIds = [...new Set(allSets.map((s) => s.exercise_id))];
     for (const exId of uniqueExerciseIds) { const { data: ex } = await supabase.from("exercises").select("name, muscle_group").eq("id", exId).single(); if (ex) exerciseMap[exId] = { name: ex.name, muscleGroup: ex.muscle_group }; }
@@ -75,17 +112,76 @@ export default function AnalyticsPage() {
   const chartTheme = { grid: { stroke: "hsl(var(--card-border))" }, text: { fill: "hsl(var(--muted-foreground))" } };
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", borderRadius: "12px", color: "hsl(var(--text-white))" };
 
+  const periods: { key: PeriodFilter; label: string }[] = [
+    { key: "7d", label: "7j" },
+    { key: "30d", label: "30j" },
+    { key: "90d", label: "3 mois" },
+    { key: "all", label: "Tout" },
+  ];
+
+  function buildVolumeChartData(): { data: VolumeData[]; ticks: string[] } {
+    const data = volumeData;
+    if (data.length === 0) return { data: [], ticks: [] };
+    if (periodFilter === "7d") {
+      const filled: VolumeData[] = [];
+      const ticks: string[] = [];
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const label = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+        ticks.push(label);
+        const existing = data.find((v) => v.label === label);
+        if (existing) filled.push(existing);
+        else filled.push({ date: label, volume: 0, label });
+      }
+      return { data: filled, ticks };
+    }
+    const MIN_POINTS = 5;
+if (data.length < MIN_POINTS) {
+  const padded = [...data];
+  for (let i = data.length; i < MIN_POINTS; i++) {
+    padded.unshift({ date: `—${i}`, volume: 0, label: `—${i}` });
+  }
+  return { data: padded, ticks: padded.map((d) => d.label) };
+}
+return { data, ticks: data.map((d) => d.label) };
+  }
+
+  const { data: volumeChartData, ticks: volumeChartTicks } = buildVolumeChartData();
+
   return (
     <main className="flex min-h-screen flex-col p-5 pb-24">
-      <h1 className="text-2xl font-bold tracking-tight mb-6">{t("analytics_title", lang)}</h1>
+      <h1 className="text-2xl font-bold tracking-tight mb-4">{t("analytics_title", lang)}</h1>
+
+      {/* Period filter pills */}
+      <div className="flex gap-2 mb-5">
+        {periods.map((p) => (
+          <button
+            key={p.key}
+            onClick={() => setPeriodFilter(p.key)}
+            className="rounded-full px-4 py-1.5 text-xs font-semibold active:scale-95 transition-all"
+            style={
+              periodFilter === p.key
+                ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", color: "white", boxShadow: "0 2px 8px hsl(142 71% 45% / 0.25)" }
+                : { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", color: "hsl(var(--muted-foreground))" }
+            }
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
 
       {loadingData ? (
         <p className="text-neutral-500">{t("programs_loading", lang)}</p>
       ) : totalWorkouts === 0 ? (
-        <div className="text-center py-16">
-          <Dumbbell className="h-12 w-12 text-neutral-700 mx-auto mb-4" />
-          <p className="text-neutral-500 mb-4">{t("analytics_no_data", lang)}</p>
-          <Link href="/workout" className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-6 py-3 font-semibold text-neutral-950 shadow-lg shadow-green-500/20 active:scale-95 transition-all">
+        <div className="text-center py-20">
+          <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "hsl(var(--primary) / 0.1)" }}>
+            <BarChart3 className="h-8 w-8" style={{ color: "hsl(var(--primary))" }} />
+          </div>
+          <p className="text-base font-semibold text-[hsl(var(--foreground))] mb-1">{lang === "en" ? "No data yet" : "Pas encore de données"}</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] mb-6">{lang === "en" ? "Start your first workout to see your progress here" : "Lance ta première séance pour voir ta progression ici"}</p>
+          <Link href="/workout" className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-[hsl(var(--primary-foreground))] active:scale-95 transition-all" style={{ background: "linear-gradient(135deg, hsl(var(--primary)), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(var(--primary-glow))" }}>
             {lang === "en" ? "Start a workout" : "Commencer une séance"}
             <ArrowRight className="h-4 w-4" />
           </Link>
@@ -131,12 +227,12 @@ export default function AnalyticsPage() {
               <h2 className="text-sm font-semibold mb-3">{lang === "en" ? "Volume per workout" : "Volume par séance"}</h2>
               <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={volumeData}>
+                  <BarChart data={volumeChartData} barCategoryGap="60%">
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid.stroke} />
-                    <XAxis dataKey="label" stroke={chartTheme.text.fill} fontSize={10} />
-                    <YAxis stroke={chartTheme.text.fill} fontSize={10} />
+                    <XAxis dataKey="label" stroke={chartTheme.text.fill} fontSize={10} interval={0} ticks={volumeChartTicks.length > 0 ? volumeChartTicks : undefined} />
+                    <YAxis stroke={chartTheme.text.fill} fontSize={10} domain={[0, "dataMax"]} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: unknown) => [`${Math.round(value as number)} kg`, "Volume"]} />
-                    <Bar dataKey="volume" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="volume" fill="#22c55e" radius={[6, 6, 0, 0]} barSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -148,12 +244,12 @@ export default function AnalyticsPage() {
               <h2 className="text-sm font-semibold mb-3">{lang === "en" ? "Frequency by day" : "Fréquence par jour"}</h2>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={frequencyData}>
+                  <BarChart data={frequencyData} barCategoryGap="40%">
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid.stroke} />
                     <XAxis dataKey="day" stroke={chartTheme.text.fill} fontSize={10} />
                     <YAxis stroke={chartTheme.text.fill} fontSize={10} allowDecimals={false} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: unknown) => [`${value} séance${(value as number) > 1 ? "s" : ""}`, ""]} />
-                    <Bar dataKey="count" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="count" fill="#22c55e" radius={[6, 6, 0, 0]} maxBarSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

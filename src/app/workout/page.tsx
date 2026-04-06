@@ -10,15 +10,15 @@ import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
 
 interface Program { id: string; name: string; }
 
-const PUSH_WORKOUT: { name: string; muscleGroup: string; baseWeight: number; sets: number; repMin: number; repMax: number }[] = [
-  { name: "Développé couché (Barre)", muscleGroup: "Pectoraux", baseWeight: 80, sets: 4, repMin: 6, repMax: 10 },
-  { name: "Développé incliné (Barre)", muscleGroup: "Pectoraux", baseWeight: 60, sets: 3, repMin: 6, repMax: 10 },
-  { name: "Chest press (Machine)", muscleGroup: "Pectoraux", baseWeight: 40, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Chest press inclinée (Machine)", muscleGroup: "Pectoraux", baseWeight: 35, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Développé militaire (Machine)", muscleGroup: "Épaules", baseWeight: 40, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Élévations latérales (Haltères)", muscleGroup: "Épaules", baseWeight: 10, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Extensions poulie haute (Corde)", muscleGroup: "Triceps", baseWeight: 20, sets: 3, repMin: 8, repMax: 10 },
-  { name: "Extensions au-dessus de la tête (Poulie)", muscleGroup: "Triceps", baseWeight: 15, sets: 3, repMin: 8, repMax: 10 },
+const PUSH_WORKOUT: { name: string; muscleGroup: string; sets: number; repMin: number; repMax: number }[] = [
+  { name: "Développé couché (Barre)", muscleGroup: "Pectoraux", sets: 4, repMin: 6, repMax: 10 },
+  { name: "Développé incliné (Barre)", muscleGroup: "Pectoraux", sets: 3, repMin: 6, repMax: 10 },
+  { name: "Chest press (Machine)", muscleGroup: "Pectoraux", sets: 3, repMin: 8, repMax: 10 },
+  { name: "Chest press inclinée (Machine)", muscleGroup: "Pectoraux", sets: 3, repMin: 8, repMax: 10 },
+  { name: "Développé militaire (Machine)", muscleGroup: "Épaules", sets: 3, repMin: 8, repMax: 10 },
+  { name: "Élévations latérales (Haltères)", muscleGroup: "Épaules", sets: 3, repMin: 8, repMax: 10 },
+  { name: "Extensions poulie haute (Corde)", muscleGroup: "Triceps", sets: 3, repMin: 8, repMax: 10 },
+  { name: "Extensions au-dessus de la tête (Poulie)", muscleGroup: "Triceps", sets: 3, repMin: 8, repMax: 10 },
 ];
 
 export default function WorkoutPage() {
@@ -47,11 +47,6 @@ export default function WorkoutPage() {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  function weightVariation(base: number, setIndex: number): number {
-    const variation = setIndex === 0 ? -5 : setIndex === 1 ? -2.5 : setIndex >= 3 ? 2.5 : 0;
-    return Math.round((base + variation) * 10) / 10;
-  }
-
   async function getOrCreateExercise(name: string, muscleGroup: string): Promise<string> {
     const { data: existing } = await supabase.from("exercises").select("id").eq("name", name).single();
     if (existing) return existing.id;
@@ -70,7 +65,7 @@ export default function WorkoutPage() {
         const exerciseId = await getOrCreateExercise(exDef.name, exDef.muscleGroup);
         const setsToInsert = [];
         for (let i = 0; i < exDef.sets; i++) {
-          setsToInsert.push({ workout_id: workout.id, exercise_id: exerciseId, set_number: i + 1, reps: randomReps(exDef.repMin, exDef.repMax), weight: weightVariation(exDef.baseWeight, i), rest_sec: 90, completed: false });
+          setsToInsert.push({ workout_id: workout.id, exercise_id: exerciseId, set_number: i + 1, reps: randomReps(exDef.repMin, exDef.repMax), weight: 0, rest_sec: 90, completed: false });
         }
         if (setsToInsert.length > 0) await supabase.from("workout_sets").insert(setsToInsert);
       }
@@ -96,18 +91,20 @@ export default function WorkoutPage() {
             const completedSets = lastSets.filter((s: { completed: boolean }) => s.completed);
             if (completedSets.length > 0) {
               const bestReps = Math.max(...completedSets.map((s: { reps: number }) => s.reps));
-              const allHitTarget = completedSets.every((s: { reps: number; weight: number }) => s.reps >= ex.target_reps && s.weight >= ex.target_weight);
-              if (allHitTarget) {
-                const newWeight = Math.round((ex.target_weight + 2.5) * 10) / 10;
+              const targetW = ex.target_weight ?? 0;
+              const allHitTarget = completedSets.every((s: { reps: number; weight: number }) => s.reps >= ex.target_reps && s.weight >= targetW);
+              if (allHitTarget && targetW > 0) {
+                const newWeight = Math.round((targetW + 2.5) * 10) / 10;
                 for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: ex.target_reps, weight: newWeight });
               } else {
-                for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: bestReps, weight: ex.target_weight });
+                for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: bestReps, weight: targetW });
               }
             }
           }
         }
         if (sets.length === 0) {
-          for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: ex.target_reps, weight: ex.target_weight });
+          const targetW = ex.target_weight ?? 0;
+          for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: ex.target_reps, weight: targetW });
         }
         const setsToInsert = sets.map((s, i) => ({ workout_id: workout.id, exercise_id: ex.exercise_id, set_number: i + 1, reps: s.reps, weight: s.weight, rest_sec: 90, completed: false }));
         if (setsToInsert.length > 0) await supabase.from("workout_sets").insert(setsToInsert);
