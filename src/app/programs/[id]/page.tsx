@@ -190,12 +190,22 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     setTargetSets({ ...targetSets, [programExerciseId]: updated });
   }
 
-  function commitSetField(programExerciseId: string, setIndex: number, field: "target_reps" | "target_weight", value: number | null) {
-    updateSetField(programExerciseId, setIndex, field, value);
+  async function commitSetField(programExerciseId: string, setIndex: number, field: "target_reps" | "target_weight", value: number | null) {
     const currentSets = targetSets[programExerciseId] || [];
-    const setToUpdate = currentSets[setIndex];
-    if (setToUpdate && !setToUpdate.id.startsWith("default-")) {
-      syncTargetSetsToDB(programExerciseId, currentSets);
+    const updated = currentSets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s);
+    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+
+    const setToUpdate = updated[setIndex];
+    if (!setToUpdate) return;
+
+    if (setToUpdate.id.startsWith("default-")) {
+      const pe = programExercises.find((p) => p.id === programExerciseId);
+      if (pe) {
+        await supabase.from("program_exercises").update({ target_weight: field === "target_weight" ? value : pe.target_weight, target_reps: field === "target_reps" ? value : pe.target_reps }).eq("id", programExerciseId);
+        setProgramExercises(programExercises.map((p) => p.id === programExerciseId ? { ...p, [field === "target_weight" ? "target_weight" : "target_reps"]: value } : p));
+      }
+    } else {
+      await supabase.from("program_exercise_sets").update({ [field]: value }).eq("id", setToUpdate.id);
     }
   }
 
