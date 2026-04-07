@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useApp } from "@/lib/context";
@@ -39,6 +39,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   const { user, loading } = useAuth();
   const { lang } = useApp();
   const router = useRouter();
+  const programIdRef = useRef("");
   const [programId, setProgramId] = useState("");
   const [programName, setProgramName] = useState("");
   const [editingName, setEditingName] = useState(false);
@@ -58,7 +59,12 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   const [inlineSetValues, setInlineSetValues] = useState<Record<string, string>>({});
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
-  useEffect(() => { params.then((p) => setProgramId(p.id)); }, [params]);
+  useEffect(() => { 
+    params.then((p) => { 
+      setProgramId(p.id); 
+      programIdRef.current = p.id;
+    }); 
+  }, [params]);
   useEffect(() => { if (!user || !programId) return; loadData(); }, [user, programId]);
 
   async function loadData() {
@@ -196,6 +202,8 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function addExercise(support: string) {
+    const currentProgramId = programIdRef.current;
+    
     if (!selectedBase) {
       setShowSupportPopup(false);
       setShowAdd(false);
@@ -203,7 +211,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
       return;
     }
     
-    if (!programId) {
+    if (!currentProgramId) {
       console.error("Program ID not set");
       setShowSupportPopup(false);
       setShowAdd(false);
@@ -223,23 +231,15 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
         return;
       }
       
-      const order = programExercises.length;
-      
-      const { data: existingEx } = await supabase.from("exercises").select("id").eq("name", fullName).single();
-      if (!existingEx) {
-        console.error("Exercise was not created properly");
-        setShowSupportPopup(false);
-        setShowAdd(false);
-        setSelectedBase(null);
-        return;
-      }
+      const currentExercises = programExercises || [];
+      const order = currentExercises.length;
       
       const insertPayload = {
-        program_id: programId,
+        program_id: currentProgramId,
         exercise_id: exerciseId,
         target_sets: 4,
         target_reps: 8,
-        target_weight: null,
+        target_weight: 0,
         sort_order: order,
       };
       
@@ -257,6 +257,14 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
         return;
       }
       
+      if (!peData) {
+        console.error("No data returned from insert");
+        setShowSupportPopup(false);
+        setShowAdd(false);
+        setSelectedBase(null);
+        return;
+      }
+      
       const newPe = {
         ...peData,
         exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup },
@@ -264,7 +272,6 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
         rep_range_max: 12,
       } as ProgramExercise;
       
-      const currentExercises = programExercises || [];
       setProgramExercises([...currentExercises, newPe]);
       
       const defaults: TargetSet[] = [];
@@ -274,13 +281,12 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
           program_exercise_id: peData.id,
           set_number: i,
           target_reps: 8,
-          target_weight: null,
+          target_weight: 0,
           sort_order: i - 1,
         });
       }
       
-      const currentTargetSets = targetSets || {};
-      setTargetSets({ ...currentTargetSets, [peData.id]: defaults });
+      setTargetSets((prev) => ({ ...prev, [peData.id]: defaults }));
       
     } catch (err) {
       console.error("Exception in addExercise:", err);
