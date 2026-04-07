@@ -26,41 +26,32 @@ async function processSyncQueue() {
   const pending = await getPendingSyncs();
   if (pending.length === 0) return 0;
 
-  let synced = 0;
-  for (const op of pending) {
-    try {
+  const results = await Promise.allSettled(
+    pending.map(async (op) => {
       if (op.operation === "insert" && op.payload) {
         const { error } = await supabase.from(op.table).insert(op.payload);
-        if (!error) {
-          await clearSynced(op.id);
-          synced++;
-        }
+        if (error) throw error;
       } else if (op.operation === "update" && op.where && op.payload) {
         let query = supabase.from(op.table).update(op.payload);
         for (const [key, val] of Object.entries(op.where)) {
           query = query.eq(key, val as string);
         }
         const { error } = await query;
-        if (!error) {
-          await clearSynced(op.id);
-          synced++;
-        }
+        if (error) throw error;
       } else if (op.operation === "delete" && op.where) {
         let query = supabase.from(op.table).delete();
         for (const [key, val] of Object.entries(op.where)) {
           query = query.eq(key, val as string);
         }
         const { error } = await query;
-        if (!error) {
-          await clearSynced(op.id);
-          synced++;
-        }
+        if (error) throw error;
       }
-    } catch {
-      // skip failed ops, retry later
-    }
-  }
-  return synced;
+      await clearSynced(op.id);
+      return op.id;
+    })
+  );
+
+  return results.filter((r) => r.status === "fulfilled").length;
 }
 
 async function syncWorkoutSets(workoutId: string, sets: unknown[]) {

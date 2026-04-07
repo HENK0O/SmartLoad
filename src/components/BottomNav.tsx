@@ -46,6 +46,8 @@ export default function BottomNav() {
             <Link
               key={href}
               href={href}
+              aria-label={t(labelKey, lang)}
+              aria-current={active ? "page" : undefined}
               className="relative flex flex-col items-center justify-center min-w-14 min-h-11 py-1 px-2 rounded-xl transition-all duration-200 active:scale-[0.95]"
             >
               {active && (

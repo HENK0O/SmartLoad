@@ -37,19 +37,52 @@ export default function CalendarPage() {
     setLoadingData(true);
     const year = currentDate.getFullYear(), month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1), lastDay = new Date(year, month + 1, 0);
-    const { data: workouts } = await supabase.from("workouts").select("id, program_id, status, started_at, programs(name)").eq("user_id", user!.id).gte("started_at", firstDay.toISOString()).lt("started_at", new Date(lastDay.getTime() + 86400000).toISOString()).order("started_at", { ascending: true });
-    const byDate: Record<string, CalendarWorkout[]> = {};
-    if (workouts) {
-      for (const w of workouts) {
-        const dateKey = new Date(w.started_at).toLocaleDateString("fr-FR");
-        const { data: sets } = await supabase.from("workout_sets").select("exercise_id, reps, weight, completed, note, rpe, exercises(name)").eq("workout_id", w.id).order("set_number");
-        const completedCount = (sets || []).filter((s: { completed: boolean }) => s.completed).length;
-        if (completedCount === 0 && w.status !== "completed" && w.status !== "partial") continue;
-        if (!byDate[dateKey]) byDate[dateKey] = [];
-        const exerciseMap: Record<string, { name: string; sets: { reps: number; weight: number; completed: boolean; note?: string; rpe?: number }[] }> = {};
-        if (sets) { for (const s of sets) { const exId = s.exercise_id; if (!exerciseMap[exId]) exerciseMap[exId] = { name: (s.exercises as unknown as { name: string })?.name ?? "Exercice", sets: [] }; const ss = s as unknown as { reps: number; weight: number; completed: boolean; note?: string; rpe?: number }; exerciseMap[exId].sets.push({ reps: ss.reps, weight: ss.weight, completed: ss.completed, note: ss.note, rpe: ss.rpe }); } }
-        byDate[dateKey].push({ id: w.id, program_name: (w.programs as unknown as { name: string } | null)?.name ?? "Séance libre", status: w.status, started_at: w.started_at, exercises: Object.values(exerciseMap) });
+    const { data: workouts, error } = await supabase
+      .from("workouts")
+      .select("id, program_id, status, started_at, programs(name)")
+      .eq("user_id", user!.id)
+      .gte("started_at", firstDay.toISOString())
+      .lt("started_at", new Date(lastDay.getTime() + 86400000).toISOString())
+      .order("started_at", { ascending: true });
+
+    if (error || !workouts) {
+      setLoadingData(false);
+      return;
+    }
+
+    const workoutIds = workouts.map((w) => w.id);
+    let workoutSetsMap: Record<string, { workout_id: string; exercise_id: string; reps: number; weight: number; completed: boolean; note?: string; rpe?: number; exercises: { name: string } }[]> = {};
+
+    if (workoutIds.length > 0) {
+      const { data: allSets } = await supabase
+        .from("workout_sets")
+        .select("workout_id, exercise_id, reps, weight, completed, note, rpe, exercises(name)")
+        .in("workout_id", workoutIds)
+        .order("set_number");
+
+      if (allSets) {
+        for (const s of allSets as unknown as { workout_id: string; exercise_id: string; reps: number; weight: number; completed: boolean; note?: string; rpe?: number; exercises: { name: string } }[]) {
+          if (!workoutSetsMap[s.workout_id]) workoutSetsMap[s.workout_id] = [];
+          workoutSetsMap[s.workout_id].push(s);
+        }
       }
+    }
+
+    const byDate: Record<string, CalendarWorkout[]> = {};
+    for (const w of workouts) {
+      const dateKey = new Date(w.started_at).toLocaleDateString("fr-FR");
+      const sets = workoutSetsMap[w.id] || [];
+      const completedCount = sets.filter((s) => s.completed).length;
+      if (completedCount === 0 && w.status !== "completed" && w.status !== "partial") continue;
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      const exerciseMap: Record<string, { name: string; sets: { reps: number; weight: number; completed: boolean; note?: string; rpe?: number }[] }> = {};
+      for (const s of sets) {
+        const exId = s.exercise_id;
+        if (!exerciseMap[exId]) exerciseMap[exId] = { name: (s.exercises as unknown as { name: string })?.name ?? "Exercice", sets: [] };
+        const ss = s as unknown as { reps: number; weight: number; completed: boolean; note?: string; rpe?: number };
+        exerciseMap[exId].sets.push({ reps: ss.reps, weight: ss.weight, completed: ss.completed, note: ss.note, rpe: ss.rpe });
+      }
+      byDate[dateKey].push({ id: w.id, program_name: (w.programs as unknown as { name: string } | null)?.name ?? "Séance libre", status: w.status, started_at: w.started_at, exercises: Object.values(exerciseMap) });
     }
     setWorkoutsByDate(byDate);
     if (Object.keys(byDate).length > 0) setHasAnyWorkout(true);

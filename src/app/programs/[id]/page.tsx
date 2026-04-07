@@ -59,29 +59,51 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   useEffect(() => { if (!user || !programId) return; loadData(); }, [user, programId]);
 
   async function loadData() {
-    const { data: program } = await supabase.from("programs").select("name").eq("id", programId).single();
-    if (program) setProgramName(program.name);
-    const { data: pe, error } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order");
-    if (pe) { const mapped = (pe as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.rep_range_min || p.target_reps, rep_range_max: p.rep_range_max || p.target_reps + 4 })); setProgramExercises(mapped); }
-    else if (error && error.code === "42703") { const { data: fallback } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order"); if (fallback) { const mapped = (fallback as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.target_reps, rep_range_max: p.target_reps + 4 })); setProgramExercises(mapped); } }
-    await loadTargetSets();
-    setLoadingData(false);
+    try {
+      const { data: program, error: programError } = await supabase.from("programs").select("name").eq("id", programId).single();
+      if (programError) {
+        console.error("Error loading program:", programError);
+      } else if (program) {
+        setProgramName(program.name);
+      }
+
+      const { data: pe, error } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order");
+      if (pe) { const mapped = (pe as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.rep_range_min || p.target_reps, rep_range_max: p.rep_range_max || p.target_reps + 4 })); setProgramExercises(mapped); }
+      else if (error && error.code === "42703") {
+        const { data: fallback } = await supabase.from("program_exercises").select("id, exercise_id, target_sets, target_reps, target_weight, sort_order, exercises(id, name, muscle_group)").eq("program_id", programId).order("sort_order");
+        if (fallback) { const mapped = (fallback as unknown as ProgramExercise[]).map((p) => ({ ...p, rep_range_min: p.target_reps, rep_range_max: p.target_reps + 4 })); setProgramExercises(mapped); }
+      } else if (error) {
+        console.error("Error loading program exercises:", error);
+      }
+      await loadTargetSets();
+    } catch (e) {
+      console.error("Exception loading data:", e);
+    } finally {
+      setLoadingData(false);
+    }
   }
 
   async function loadTargetSets() {
     if (programExercises.length === 0) return;
     const allSets: Record<string, TargetSet[]> = {};
-    for (const pe of programExercises) {
-      const { data: sets } = await supabase.from("program_exercise_sets").select("id, program_exercise_id, set_number, target_reps, target_weight, sort_order").eq("program_exercise_id", pe.id).order("sort_order");
-      if (sets && sets.length > 0) {
-        allSets[pe.id] = sets as TargetSet[];
-      } else {
-        const defaults: TargetSet[] = [];
-        for (let i = 1; i <= pe.target_sets; i++) {
-          defaults.push({ id: `default-${pe.id}-${i}`, program_exercise_id: pe.id, set_number: i, target_reps: pe.rep_range_min, target_weight: pe.target_weight, sort_order: i - 1 });
+    try {
+      for (const pe of programExercises) {
+        const { data: sets, error } = await supabase.from("program_exercise_sets").select("id, program_exercise_id, set_number, target_reps, target_weight, sort_order").eq("program_exercise_id", pe.id).order("sort_order");
+        if (error) {
+          console.error("Error loading target sets for exercise", pe.id, error);
         }
-        allSets[pe.id] = defaults;
+        if (sets && sets.length > 0) {
+          allSets[pe.id] = sets as TargetSet[];
+        } else {
+          const defaults: TargetSet[] = [];
+          for (let i = 1; i <= pe.target_sets; i++) {
+            defaults.push({ id: `default-${pe.id}-${i}`, program_exercise_id: pe.id, set_number: i, target_reps: pe.rep_range_min, target_weight: pe.target_weight, sort_order: i - 1 });
+          }
+          allSets[pe.id] = defaults;
+        }
       }
+    } catch (e) {
+      console.error("Exception loading target sets:", e);
     }
     setTargetSets(allSets);
   }
@@ -151,11 +173,23 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function getOrCreateExercise(name: string, muscleGroup: string): Promise<string> {
-    const { data: existing } = await supabase.from("exercises").select("id").eq("name", name).single();
-    if (existing) return existing.id;
-    const { data: created } = await supabase.from("exercises").insert({ name, muscle_group: muscleGroup }).select().single();
-    if (created) return created.id;
-    throw new Error(`Impossible de créer l'exercice: ${name}`);
+    try {
+      const { data: existing, error: existingError } = await supabase.from("exercises").select("id").eq("name", name).single();
+      if (existingError && existingError.code !== "PGRST116") {
+        console.error("Error checking existing exercise:", existingError);
+      }
+      if (existing) return existing.id;
+      const { data: created, error: createError } = await supabase.from("exercises").insert({ name, muscle_group: muscleGroup }).select().single();
+      if (createError) {
+        console.error("Error creating exercise:", createError);
+        throw new Error(`Impossible de créer l'exercice: ${name}`);
+      }
+      if (created) return created.id;
+      throw new Error(`Impossible de créer l'exercice: ${name}`);
+    } catch (e) {
+      console.error("Exception in getOrCreateExercise:", e);
+      throw e;
+    }
   }
 
   async function addExercise(support: string) {
@@ -203,14 +237,19 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     if (direction === "up" && idx === 0) return;
     if (direction === "down" && idx === programExercises.length - 1) return;
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    const currentExercise = programExercises[idx];
+    const swapExercise = programExercises[swapIdx];
+    if (!currentExercise || !swapExercise) return;
+
     const updated = [...programExercises];
     [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
-    // Update sort_order locally
     const withOrder = updated.map((pe, i) => ({ ...pe, sort_order: i }));
     setProgramExercises(withOrder);
-    // Persist to DB
-    await supabase.from("program_exercises").update({ sort_order: swapIdx }).eq("id", id);
-    await supabase.from("program_exercises").update({ sort_order: idx }).eq("id", programExercises[swapIdx].id);
+
+    await Promise.all([
+      supabase.from("program_exercises").update({ sort_order: swapIdx }).eq("id", id),
+      supabase.from("program_exercises").update({ sort_order: idx }).eq("id", swapExercise.id),
+    ]);
   }
 
   async function saveEdit(id: string) {

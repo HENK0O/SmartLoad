@@ -216,26 +216,32 @@
 
 .animate-slide-up {
   animation: slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
 }
 
 .animate-slide-down {
   animation: slide-down 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
 }
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out both;
+  will-change: opacity;
 }
 
 .animate-scale-in {
   animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
 }
 
 .animate-float {
   animation: float 3s ease-in-out infinite;
+  will-change: transform;
 }
 
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
+  will-change: box-shadow;
 }
 
 .stagger-1 { animation-delay: 0.05s; }

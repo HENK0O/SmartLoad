@@ -59,23 +59,54 @@ export default function SettingsPage() {
   async function saveUnit(newUnit: "kg" | "lbs") {
     setUnit(newUnit);
     setSaving(true);
-    const factor = newUnit === "lbs" ? 2.20462 : 1 / 2.20462;
-    const { data: programs } = await supabase.from("programs").select("id").eq("user_id", user!.id);
-    if (programs) {
-      const programIds = programs.map((p) => p.id);
-      const { data: peList } = await supabase.from("program_exercises").select("id, target_weight").in("program_id", programIds);
-      if (peList) for (const pe of peList) { const newWeight = Math.round(pe.target_weight * factor * 10) / 10; await supabase.from("program_exercises").update({ target_weight: newWeight }).eq("id", pe.id); }
-      const { data: workouts } = await supabase.from("workouts").select("id").eq("user_id", user!.id);
-      if (workouts) {
-        const workoutIds = workouts.map((w) => w.id);
-        const { data: sets } = await supabase.from("workout_sets").select("id, weight").in("workout_id", workoutIds);
-        if (sets) for (const s of sets) { const newWeight = Math.round(s.weight * factor * 10) / 10; await supabase.from("workout_sets").update({ weight: newWeight }).eq("id", s.id); }
+    try {
+      const factor = newUnit === "lbs" ? 2.20462 : 1 / 2.20462;
+      const { data: programs, error: programsError } = await supabase.from("programs").select("id").eq("user_id", user!.id);
+      if (programsError) throw programsError;
+
+      if (programs) {
+        const programIds = programs.map((p) => p.id);
+        const { data: peList, error: peError } = await supabase.from("program_exercises").select("id, target_weight").in("program_id", programIds);
+        if (peError) throw peError;
+
+        if (peList) {
+          const peUpdates = peList.map((pe) => ({
+            id: pe.id,
+            target_weight: Math.round(pe.target_weight * factor * 10) / 10,
+          }));
+          for (const update of peUpdates) {
+            await supabase.from("program_exercises").update({ target_weight: update.target_weight }).eq("id", update.id);
+          }
+        }
+
+        const { data: workouts, error: workoutsError } = await supabase.from("workouts").select("id").eq("user_id", user!.id);
+        if (workoutsError) throw workoutsError;
+
+        if (workouts) {
+          const workoutIds = workouts.map((w) => w.id);
+          const { data: sets, error: setsError } = await supabase.from("workout_sets").select("id, weight").in("workout_id", workoutIds);
+          if (setsError) throw setsError;
+
+          if (sets) {
+            const setUpdates = sets.map((s) => ({
+              id: s.id,
+              weight: Math.round(s.weight * factor * 10) / 10,
+            }));
+            for (const update of setUpdates) {
+              await supabase.from("workout_sets").update({ weight: update.weight }).eq("id", update.id);
+            }
+          }
+        }
       }
+      const { error: profileError } = await supabase.from("profiles").update({ unit: newUnit }).eq("id", user!.id);
+      if (profileError) throw profileError;
+    } catch (e) {
+      console.error("Error saving unit:", e);
+    } finally {
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     }
-    await supabase.from("profiles").update({ unit: newUnit }).eq("id", user!.id);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   }
 
   async function saveRestTime(val: number) {

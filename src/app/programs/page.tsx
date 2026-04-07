@@ -102,32 +102,57 @@ export default function ProgramsPage() {
   }, [user]);
 
   async function loadPrograms() {
-    const { data } = await supabase
-      .from("programs")
-      .select("id, name, created_at")
-      .order("created_at", { ascending: false });
-    if (data) setPrograms(data);
-    setLoadingPrograms(false);
+    try {
+      const { data, error } = await supabase
+        .from("programs")
+        .select("id, name, created_at")
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("Error loading programs:", error);
+        setError("Erreur lors du chargement des programmes");
+      }
+      if (data) setPrograms(data);
+    } catch (e) {
+      console.error("Exception loading programs:", e);
+      setError("Erreur lors du chargement des programmes");
+    } finally {
+      setLoadingPrograms(false);
+    }
   }
 
   async function loadHistory() {
-    const { data } = await supabase
-      .from("workouts")
-      .select(
-        "id, status, started_at, completed_at, programs(name), workout_sets(exercise_id, reps, weight, exercises(name))"
-      )
-      .order("started_at", { ascending: false });
-    if (data) setWorkouts(data as unknown as Workout[]);
-    setLoadingHistory(false);
+    try {
+      const { data, error } = await supabase
+        .from("workouts")
+        .select(
+          "id, status, started_at, completed_at, programs(name), workout_sets(exercise_id, reps, weight, exercises(name))"
+        )
+        .order("started_at", { ascending: false });
+      if (error) {
+        console.error("Error loading history:", error);
+      }
+      if (data) setWorkouts(data as unknown as Workout[]);
+    } catch (e) {
+      console.error("Exception loading history:", e);
+    } finally {
+      setLoadingHistory(false);
+    }
   }
 
   async function loadUnit() {
-    const { data } = await supabase
-      .from("profiles")
-      .select("unit")
-      .eq("id", user!.id)
-      .single();
-    if (data) setUnit(data.unit as "kg" | "lbs");
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("unit")
+        .eq("id", user!.id)
+        .single();
+      if (error) {
+        console.error("Error loading unit:", error);
+      }
+      if (data) setUnit(data.unit as "kg" | "lbs");
+    } catch (e) {
+      console.error("Exception loading unit:", e);
+    }
   }
 
   async function loadDashboardData() {
@@ -136,13 +161,18 @@ export default function ProgramsPage() {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const { data: allWorkouts } = await supabase
-      .from("workouts")
-      .select("id, status, started_at, completed_at, program_id, programs(name), workout_sets(reps, weight, completed, exercise_id, exercises(name))")
-      .eq("user_id", user!.id)
-      .order("started_at", { ascending: false });
+    try {
+      const { data: allWorkouts, error } = await supabase
+        .from("workouts")
+        .select("id, status, started_at, completed_at, program_id, programs(name), workout_sets(reps, weight, completed, exercise_id, exercises(name))")
+        .eq("user_id", user!.id)
+        .order("started_at", { ascending: false });
 
-    if (!allWorkouts) return;
+      if (error) {
+        console.error("Error loading dashboard data:", error);
+        return;
+      }
+      if (!allWorkouts) return;
 
     const completedWorkouts = allWorkouts.filter((w) => w.status === "completed");
 
@@ -219,6 +249,9 @@ export default function ProgramsPage() {
       }
     }
     setStreak(streakCount);
+    } catch (e) {
+      console.error("Exception loading dashboard data:", e);
+    }
   }
 
   function displayWeight(kg: number): string {

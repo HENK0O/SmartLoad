@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
-import { analyzeProgression, estimate1RM, type ExerciseHistory, type ExerciseSession, type ProgressionTargets, type ProgressionOption } from "@/lib/progression";
+import { analyzeProgression, estimate1RM, getAutoFill, type ExerciseHistory, type ExerciseSession, type ProgressionTargets, type ProgressionOption, type ProgressionAnalysis, type AutoFillData } from "@/lib/progression";
 import { useOnlineStatus, processSyncQueue, queueSync, cacheWorkoutData, getCachedWorkout } from "@/hooks/useOfflineSync";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import Confetti from "@/components/Confetti";
@@ -270,6 +270,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
         // 5. Build progression for each exercise from prefetched data
         const info: Record<string, SmartProgression> = {};
+        const lastSessionMap: Record<string, ExerciseSession | null> = {};
+        
         for (const group of groupsData) {
           const exercisePastSets = allPastSets.filter((s) => s.exercise_id === group.exercise.id);
           const sessions: ExerciseSession[] = [];
@@ -277,10 +279,53 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
             const wSets = exercisePastSets.filter((s) => s.workout_id === w.id);
             if (wSets.length > 0) sessions.push({ date: w.started_at, sets: wSets.map((s) => ({ reps: s.reps, weight: s.weight, completed: s.completed })) });
           }
+          
+          const lastSessionSets = lastSetsMap[group.exercise.id];
+          lastSessionMap[group.exercise.id] = lastSessionSets && lastSessionSets.length > 0
+            ? { date: "", sets: lastSessionSets.map((s) => ({ reps: s.reps, weight: s.weight, completed: true })) }
+            : null;
+          
           const history: ExerciseHistory = { exerciseId: group.exercise.id, exerciseName: group.exercise.name, muscleGroup: group.exercise.muscle_group, sessions };
           const targets: ProgressionTargets = { targetSets: group.targetSets, repRangeMin: group.repRangeMin, repRangeMax: group.repRangeMax, currentWeight: group.targetWeight };
           const analysis = analyzeProgression(history, targets);
           info[group.exercise.id] = { analysis, primary: analysis.primaryOption, alternative: analysis.alternativeOption, deload: analysis.deloadOption };
+        }
+
+        // 6. Auto-fill sets for new workouts based on progression
+        for (const group of groupsData) {
+          if (group.sets.length === 0) {
+            const lastSession = lastSessionMap[group.exercise.id];
+            const analysis = info[group.exercise.id]?.analysis;
+            const targets: ProgressionTargets = { targetSets: group.targetSets, repRangeMin: group.repRangeMin, repRangeMax: group.repRangeMax, currentWeight: group.targetWeight };
+            const autoFill = getAutoFill(lastSession, analysis || null, targets);
+            
+            const newSets: WorkoutSet[] = [];
+            for (let i = 1; i <= group.targetSets; i++) {
+              const setData = {
+                workout_id: workoutId,
+                exercise_id: group.exercise.id,
+                set_number: i,
+                reps: autoFill.reps,
+                weight: autoFill.weight,
+                rest_sec: 90,
+                completed: false,
+              };
+              
+              if (isOnline) {
+                const { data: inserted } = await supabase.from("workout_sets").insert(setData).select().single();
+                if (inserted) {
+                  newSets.push({ id: inserted.id, exercise_id: inserted.exercise_id, set_number: inserted.set_number, reps: inserted.reps, weight: inserted.weight, rest_sec: inserted.rest_sec, completed: inserted.completed });
+                }
+              } else {
+                const tempId = `temp_${Date.now()}_${i}`;
+                await queueSync({ table: "workout_sets", operation: "insert", payload: setData });
+                setPendingSyncs((p) => p + 1);
+                newSets.push({ id: tempId, exercise_id: group.exercise.id, set_number: i, reps: autoFill.reps, weight: autoFill.weight, rest_sec: 90, completed: false });
+              }
+            }
+            
+            group.sets = newSets;
+          }
         }
 
         setSmartProgression(info);
@@ -291,14 +336,17 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
     setLoadingData(false);
   }
 
-  async function applyProgression(exerciseId: string, type: "reps" | "weight" | "deload") {
+  async function applyProgression(exerciseId: string, type: "reps" | "weight" | "deload" | "maintain") {
     const info = smartProgression[exerciseId];
     if (!info) return;
     const group = groups.find((g) => g.exercise.id === exerciseId);
     if (!group) return;
     let option: ProgressionOption;
-    if (type === "reps" || type === "weight") option = type === "reps" ? info.primary : info.alternative;
-    else { if (!info.deload) return; option = info.deload; }
+    if (type === "reps") option = info.primary;
+    else if (type === "weight") option = info.alternative;
+    else if (type === "deload") { if (!info.deload) return; option = info.deload; }
+    else { option = info.primary; }
+    
     if (isOnline) { for (const set of group.sets) await supabase.from("workout_sets").update({ reps: option.reps, weight: option.weight }).eq("id", set.id); }
     else { for (const set of group.sets) await queueSync({ table: "workout_sets", operation: "update", payload: { reps: option.reps, weight: option.weight }, where: { id: set.id } }); setPendingSyncs((p) => p + group.sets.length); }
     setGroups(groups.map((g) => g.exercise.id === exerciseId ? { ...g, sets: g.sets.map((s) => ({ ...s, reps: option.reps, weight: option.weight })) } : g));
@@ -560,6 +608,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <span className="text-xs font-mono font-semibold text-[hsl(var(--text-white))]">{formatElapsed(elapsedSeconds)}</span>
             </div>
             {!isOnline && <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "hsl(0 72% 51%)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "hsl(0 72% 51%)" }} />{t("workout_offline", lang)}</span>}
+            {pendingSyncs > 0 && <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "hsl(45 93% 47%)" }}><span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ backgroundColor: "hsl(45 93% 47%)" }} />{pendingSyncs} {t("workout_pending_sync", lang)}</span>}
           </div>
         </div>
       </div>
@@ -624,39 +673,54 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                   <p className="text-sm font-bold" style={{ color: "hsl(142 71% 45%)" }}>{t("workout_smart", lang)}</p>
                   <div className="ml-auto flex gap-3 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
                     <span className="flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />{sp.analysis.current1RM} kg</span>
-                    <span>{Math.round(sp.analysis.totalVolumeLastSession)} kg</span>
+                    {sp.analysis.avgRPE > 0 && <span className="flex items-center gap-0.5">RPE {sp.analysis.avgRPE.toFixed(1)}</span>}
                     {sp.analysis.isPlateau && <span className="flex items-center gap-0.5" style={{ color: "hsl(0 72% 51%)" }}><AlertTriangle className="h-3 w-3" />{t("workout_plateau", lang)}</span>}
                   </div>
                 </div>
+                
+                <p className="text-[10px] mb-3" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
+                  {sp.analysis.progressionReason}
+                </p>
+                
                 <div className="grid grid-cols-2 gap-2.5 mb-2">
                   <button
                     onClick={() => applyProgression(currentGroup.exercise.id, sp.primary.type)}
                     className="rounded-xl px-3 py-3.5 text-left active:scale-[0.97] transition-all"
-                    style={appliedProgression[currentGroup.exercise.id] === "reps"
+                    style={appliedProgression[currentGroup.exercise.id] === sp.primary.type
                       ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)", border: "2px solid hsl(142 71% 45% / 0.4)" }
                       : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1.5px solid hsl(var(--inactive-btn-border))" }
                     }
                   >
-                    <p className="text-sm font-bold mb-1" style={appliedProgression[currentGroup.exercise.id] === "reps" ? { color: "white" } : { color: "hsl(var(--text-white))" }}>🛡️ Conservateur</p>
-                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === "reps" ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>Basé sur tes dernières séances · Progression stable</p>
-                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === "reps" ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.primary.label}</p>
+                    <div className="flex items-center gap-1 mb-1">
+                      <p className="text-sm font-bold" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "white" } : { color: "hsl(var(--text-white))" }}>
+                        {sp.primary.type === "reps" ? "🔁 Reps" : sp.primary.type === "weight" ? "⚖️ Poids" : sp.primary.type === "deload" ? "📉 Deload" : "➖ Maintenir"}
+                      </p>
+                      {sp.primary.confidence === "high" && <span className="text-[8px] px-1 py-0.5 rounded" style={{ backgroundColor: "hsl(142 71% 45% / 0.3)", color: "white" }}>OK</span>}
+                    </div>
+                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>{sp.primary.description}</p>
+                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.primary.label}</p>
                   </button>
                   <button
                     onClick={() => applyProgression(currentGroup.exercise.id, sp.alternative.type)}
                     className="rounded-xl px-3 py-3.5 text-left active:scale-[0.97] transition-all"
-                    style={appliedProgression[currentGroup.exercise.id] === "weight"
+                    style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type
                       ? { background: "linear-gradient(135deg, hsl(142 71% 45%), hsl(142 71% 35%))", boxShadow: "0 4px 16px hsl(142 71% 45% / 0.3)", border: "2px solid hsl(142 71% 45% / 0.4)" }
                       : { backgroundColor: "hsl(var(--card-bg-muted))", border: "1.5px solid hsl(var(--inactive-btn-border))" }
                     }
                   >
-                    <p className="text-sm font-bold mb-1" style={appliedProgression[currentGroup.exercise.id] === "weight" ? { color: "white" } : { color: "hsl(var(--text-white))" }}>🚀 Ambitieux</p>
-                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === "weight" ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>Pour progresser plus vite · Si tu te sens fort</p>
-                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === "weight" ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.alternative.label}</p>
+                    <div className="flex items-center gap-1 mb-1">
+                      <p className="text-sm font-bold" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "white" } : { color: "hsl(var(--text-white))" }}>
+                        {sp.alternative.type === "reps" ? "🔁 Reps" : sp.alternative.type === "weight" ? "⚖️ Poids" : sp.alternative.type === "deload" ? "📉 Deload" : "➖ Maintenir"}
+                      </p>
+                      {sp.alternative.confidence === "high" && <span className="text-[8px] px-1 py-0.5 rounded" style={{ backgroundColor: "hsl(142 71% 45% / 0.3)", color: "white" }}>OK</span>}
+                    </div>
+                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>{sp.alternative.description}</p>
+                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.alternative.label}</p>
                   </button>
                 </div>
                 {sp.deload && (
                   <button onClick={() => applyProgression(currentGroup.exercise.id, "deload")} className="w-full rounded-xl px-3 py-3 text-xs font-semibold active:scale-95 transition-all" style={{ backgroundColor: "hsl(0 72% 51% / 0.08)", border: "1px solid hsl(0 72% 51% / 0.2)", color: "hsl(0 72% 51%)" }}>
-                    {sp.deload.label}
+                    📉 {sp.deload.label} — {sp.deload.description}
                   </button>
                 )}
               </div>
@@ -899,13 +963,13 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       {!isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 z-40 p-4 pb-6" style={{ backgroundColor: "hsl(var(--card) / 0.98)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: "1px solid hsl(var(--card-border))" }}>
           <div className="flex items-center gap-3 mb-3">
-            <button onClick={() => navigateExercise("prev")} disabled={currentExerciseIndex === 0} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
+            <button onClick={() => navigateExercise("prev")} disabled={currentExerciseIndex === 0} aria-label="Exercice précédent" className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
               <ChevronLeft className="h-5 w-5 text-[hsl(var(--text-white))]" />
             </button>
             <div className="flex-1">
               <ProgressBar value={completedSets} max={Math.max(totalSets, 1)} label={`${completedSets}/${totalSets} ${t("workout_sets_completed", lang)}`} />
             </div>
-            <button onClick={() => navigateExercise("next")} disabled={currentExerciseIndex >= groups.length - 1} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
+            <button onClick={() => navigateExercise("next")} disabled={currentExerciseIndex >= groups.length - 1} aria-label="Exercice suivant" className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
               <ChevronRight className="h-5 w-5 text-[hsl(var(--text-white))]" />
             </button>
           </div>
@@ -924,7 +988,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
       {/* PR Notification */}
       {showPR && (
-        <div className="fixed top-16 left-4 right-4 z-50 animate-slide-down">
+        <div role="status" aria-live="polite" className="fixed top-16 left-4 right-4 z-50 animate-slide-down">
           <div className="rounded-2xl p-4 flex items-center gap-3" style={{ backgroundColor: "hsl(45 93% 47% / 0.15)", border: "1px solid hsl(45 93% 47% / 0.3)", boxShadow: "0 8px 32px hsl(45 93% 47% / 0.2)" }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "hsl(45 93% 47% / 0.2)" }}>
               <Trophy className="h-5 w-5" style={{ color: "hsl(45 93% 47%)" }} />

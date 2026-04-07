@@ -9,7 +9,7 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   turbopack: {},
-  allowedDevOrigins: ['192.168.0.36'],
+  allowedDevOrigins: process.env.ALLOWED_DEV_ORIGINS?.split(",") || ["localhost"],
 };
 
 export default withPWA(nextConfig);

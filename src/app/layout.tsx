@@ -4,6 +4,7 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import { AppShell } from "@/components/AppShell";
 import { AppProvider } from "@/lib/context";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,10 +57,12 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-neutral-950 text-neutral-50">
-        <AppProvider>
-          <AppShell>{children}</AppShell>
-          <BottomNav />
-        </AppProvider>
+        <ErrorBoundary>
+          <AppProvider>
+            <AppShell>{children}</AppShell>
+            <BottomNav />
+          </AppProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
