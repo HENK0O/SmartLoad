@@ -152,57 +152,74 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function addTargetSetRow(programExerciseId: string) {
-    const currentSets = targetSets[programExerciseId] || [];
     const pe = programExercises.find((p) => p.id === programExerciseId);
     if (!pe) return;
-    const nextNum = currentSets.length + 1;
-    const newSet: TargetSet = {
-      id: `default-${programExerciseId}-${nextNum}`,
-      program_exercise_id: programExerciseId,
-      set_number: nextNum,
-      target_reps: pe.rep_range_min,
-      target_weight: pe.target_weight,
-      sort_order: nextNum - 1,
-    };
-    const updated = [...currentSets, newSet];
-    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+    let nextNum = 0;
+    setTargetSets(prev => {
+      const currentSets = prev[programExerciseId] || [];
+      nextNum = currentSets.length + 1;
+      const newSet: TargetSet = {
+        id: `default-${programExerciseId}-${nextNum}`,
+        program_exercise_id: programExerciseId,
+        set_number: nextNum,
+        target_reps: pe.rep_range_min,
+        target_weight: pe.target_weight,
+        sort_order: nextNum - 1,
+      };
+      return { ...prev, [programExerciseId]: [...currentSets, newSet] };
+    });
+    if (nextNum === 0) nextNum = (targetSets[programExerciseId]?.length || 0) + 1;
     await supabase.from("program_exercises").update({ target_sets: nextNum }).eq("id", programExerciseId);
-    setProgramExercises(programExercises.map((p) => p.id === programExerciseId ? { ...p, target_sets: nextNum } : p));
+    setProgramExercises(prev => prev.map((p) => p.id === programExerciseId ? { ...p, target_sets: nextNum } : p));
   }
 
   async function removeTargetSetRow(programExerciseId: string, setIndex: number) {
     const currentSets = targetSets[programExerciseId] || [];
     const setToRemove = currentSets[setIndex];
+    const filtered = currentSets.filter((_, i) => i !== setIndex).map((s, i) => ({ ...s, set_number: i + 1, sort_order: i }));
+    setTargetSets(prev => ({ ...prev, [programExerciseId]: filtered }));
     if (setToRemove && !setToRemove.id.startsWith("default-")) {
       await supabase.from("program_exercise_sets").delete().eq("id", setToRemove.id);
     }
-    const updated = currentSets.filter((_, i) => i !== setIndex).map((s, i) => ({ ...s, set_number: i + 1, sort_order: i }));
-    setTargetSets({ ...targetSets, [programExerciseId]: updated });
-    if (updated.length > 0) {
-      await supabase.from("program_exercises").update({ target_sets: updated.length }).eq("id", programExerciseId);
-      setProgramExercises(programExercises.map((p) => p.id === programExerciseId ? { ...p, target_sets: updated.length } : p));
+    if (filtered.length > 0) {
+      await supabase.from("program_exercises").update({ target_sets: filtered.length }).eq("id", programExerciseId);
+      setProgramExercises(prev => prev.map((p) => p.id === programExerciseId ? { ...p, target_sets: filtered.length } : p));
     }
   }
 
   function updateSetField(programExerciseId: string, setIndex: number, field: "target_reps" | "target_weight", value: number | null) {
-    const currentSets = targetSets[programExerciseId] || [];
-    const updated = currentSets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s);
-    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+    setTargetSets(prev => {
+      const currentSets = prev[programExerciseId] || [];
+      const updated = currentSets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s);
+      return { ...prev, [programExerciseId]: updated };
+    });
   }
 
   async function commitSetField(programExerciseId: string, setIndex: number, field: "target_reps" | "target_weight", value: number | null) {
-    const currentSets = targetSets[programExerciseId] || [];
-    const updated = currentSets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s);
-    setTargetSets({ ...targetSets, [programExerciseId]: updated });
+    setTargetSets(prev => {
+      const currentSets = prev[programExerciseId] || [];
+      const updated = currentSets.map((s, i) => i === setIndex ? { ...s, [field]: value } : s);
+      return { ...prev, [programExerciseId]: updated };
+    });
 
-    const setToUpdate = updated[setIndex];
+    setInlineSetValues(prev => {
+      const next = { ...prev };
+      const setKey = targetSets[programExerciseId]?.[setIndex]?.id;
+      if (setKey) {
+        delete next[`${setKey}-${field === "target_weight" ? "weight" : "reps"}`];
+      }
+      return next;
+    });
+
+    const currentSets = targetSets[programExerciseId] || [];
+    const setToUpdate = currentSets[setIndex];
     if (!setToUpdate) return;
 
     if (setToUpdate.id.startsWith("default-")) {
       const pe = programExercises.find((p) => p.id === programExerciseId);
       if (pe) {
         await supabase.from("program_exercises").update({ target_weight: field === "target_weight" ? value : pe.target_weight, target_reps: field === "target_reps" ? value : pe.target_reps }).eq("id", programExerciseId);
-        setProgramExercises(programExercises.map((p) => p.id === programExerciseId ? { ...p, [field === "target_weight" ? "target_weight" : "target_reps"]: value } : p));
+        setProgramExercises(prev => prev.map((p) => p.id === programExerciseId ? { ...p, [field === "target_weight" ? "target_weight" : "target_reps"]: value } : p));
       }
     } else {
       await supabase.from("program_exercise_sets").update({ [field]: value }).eq("id", setToUpdate.id);
