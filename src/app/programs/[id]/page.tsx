@@ -397,7 +397,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   const totalSets = programExercises.reduce((sum, pe) => sum + (targetSets[pe.id]?.length || pe.target_sets), 0);
   const estimatedMinutes = Math.round(totalSets * 2.5);
 
-  if (loading || !user) return <p className="p-6">Chargement...</p>;
+  if (loading || !user) return <p className="p-6">{t("program_loading", lang)}</p>;
 
   return (
     <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in max-w-2xl mx-auto w-full">
@@ -438,7 +438,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {loadingData ? (
-        <p className="text-[hsl(var(--muted-foreground))]">Chargement...</p>
+        <p className="text-[hsl(var(--muted-foreground))]">{t("program_loading", lang)}</p>
       ) : (
         <>
           {/* Summary bar */}
@@ -455,7 +455,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
               <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: "#1a1a1a", border: "1px solid hsl(var(--card-border))" }}>
                 <Dumbbell className="h-8 w-8" style={{ color: "hsl(var(--muted-foreground-dimmer))" }} />
               </div>
-              <p className="text-[hsl(var(--muted-foreground))] text-sm">Aucun exercice. Ajoute-en pour commencer !</p>
+              <p className="text-[hsl(var(--muted-foreground))] text-sm">{t("program_no_exercises", lang)}</p>
             </div>
           )}
 
@@ -504,7 +504,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                           <div className="min-w-0">
                             <p className="font-bold text-[16px] text-white truncate">{pe.exercises.name}</p>
                             <span className="inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-full mt-1" style={{ backgroundColor: muscleColor.bg, color: muscleColor.text }}>
-                              {pe.exercises.muscle_group || "Autre"}
+                              {pe.exercises.muscle_group || t("program_autre", lang)}
                             </span>
                           </div>
                         </div>
@@ -590,7 +590,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                               <button
                                 onClick={() => removeTargetSetRow(pe.id, si)}
                                 className="p-1 rounded transition-all hover:scale-110 active:scale-95"
-                                title="Supprimer la série"
+                                title={t("program_delete_set", lang)}
                               >
                                 <span className="text-base">🗑</span>
                               </button>
@@ -606,7 +606,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                         style={{ backgroundColor: "transparent", color: "hsl(142 71% 45%)" }}
                       >
                         <Plus className="h-4 w-4" />
-                        Série
+                        {t("program_add_set", lang)}
                       </button>
                     </div>
                   )}
@@ -636,7 +636,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                 onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
                 onBlur={(e) => (e.currentTarget.style.borderColor = "hsl(var(--card-border))")}
               >
-                <option value="">Choisir un exercice</option>
+                <option value="">{t("program_choose_exercise", lang)}</option>
                 {(() => {
                   const groups = getGroupedExercises();
                   return (
@@ -650,14 +650,14 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                   );
                 })()}
               </select>
-              <button onClick={() => { setShowAdd(false); setSelectedBase(null); }} className="w-full rounded-xl px-6 py-3 text-sm font-medium active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", color: "hsl(var(--inactive-btn-text))" }}>Annuler</button>
+              <button onClick={() => { setShowAdd(false); setSelectedBase(null); }} className="w-full rounded-xl px-6 py-3 text-sm font-medium active:scale-95 transition-all" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", color: "hsl(var(--inactive-btn-text))" }}>{t("programs_cancel", lang)}</button>
             </div>
           ) : showSupportPopup && selectedBase ? (
             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: "hsl(var(--overlay))", backdropFilter: "blur(8px)" }}>
               <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", boxShadow: "0 24px 48px hsl(var(--shadow-heavy))" }}>
                 <div className="flex items-center justify-between mb-6">
                   <p className="font-semibold text-lg text-[hsl(var(--foreground))]">{selectedBase.baseName}</p>
-                  <button onClick={() => setShowSupportPopup(false)} className="text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>Retour</button>
+                  <button onClick={() => setShowSupportPopup(false)} className="text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>{t("workout_back_btn", lang)}</button>
                 </div>
                 <div className="flex flex-col gap-3">
                   {selectedBase.supports.map((support) => (
@@ -678,7 +678,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
           ) : (
             <button onClick={() => setShowAdd(true)} disabled={!paramsResolved || loadingData} className="w-full rounded-xl px-6 py-4 text-center text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" style={{ backgroundColor: "hsl(var(--card))", border: "1px dashed hsl(var(--inactive-btn-border))", color: "hsl(var(--icon-muted))" }}>
               <Plus className="h-4 w-4" />
-              Ajouter un exercice
+              {t("program_add_exercise", lang)}
             </button>
           )}
         </>
