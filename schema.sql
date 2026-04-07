@@ -1,18 +1,11 @@
--- ==========================================
--- 1. CRÉATION DES TABLES
--- ==========================================
-
--- Table: profiles
 CREATE TABLE profiles (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   tier text NOT NULL DEFAULT 'free' CHECK (tier IN ('free', 'premium')),
   unit text NOT NULL DEFAULT 'kg' CHECK (unit IN ('kg', 'lbs')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
-  -- (NB: Tu pourras ajouter ici tes autres colonnes comme weight, height, age, etc.)
 );
 
--- Table: exercises (catalogue)
 CREATE TABLE exercises (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   name text NOT NULL,
@@ -20,7 +13,6 @@ CREATE TABLE exercises (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Table: programs (ou program_templates)
 CREATE TABLE programs (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
@@ -29,7 +21,6 @@ CREATE TABLE programs (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Table: program_exercises
 CREATE TABLE program_exercises (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   program_id uuid REFERENCES programs(id) ON DELETE CASCADE NOT NULL,
@@ -41,7 +32,6 @@ CREATE TABLE program_exercises (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Table: workouts (séances réelles)
 CREATE TABLE workouts (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
@@ -52,7 +42,6 @@ CREATE TABLE workouts (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Table: workout_sets (séries effectuées)
 CREATE TABLE workout_sets (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   workout_id uuid REFERENCES workouts(id) ON DELETE CASCADE NOT NULL,
@@ -65,11 +54,8 @@ CREATE TABLE workout_sets (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- ==========================================
--- 2. TRIGGERS ET FONCTIONS
--- ==========================================
+-- Triggers
 
--- Créer le profil automatiquement à l'inscription
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
@@ -83,7 +69,6 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- Mettre à jour updated_at automatiquement
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS trigger AS $$
 BEGIN
@@ -98,9 +83,7 @@ CREATE TRIGGER set_updated_at_profiles BEFORE UPDATE ON profiles
 CREATE TRIGGER set_updated_at_programs BEFORE UPDATE ON programs
   FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
 
--- ==========================================
--- 3. SÉCURITÉ (RLS) - VERSION SÉCURISÉE
--- ==========================================
+-- Row Level Security
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE exercises ENABLE ROW LEVEL SECURITY;
@@ -109,40 +92,32 @@ ALTER TABLE program_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workout_sets ENABLE ROW LEVEL SECURITY;
 
--- Profiles
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- Exercises (Catalogue en lecture seule pour tous)
 CREATE POLICY "Anyone can view exercises" ON exercises FOR SELECT USING (true);
 
--- Programs (Propriétaire uniquement)
 CREATE POLICY "Users can view own programs" ON programs FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own programs" ON programs FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own programs" ON programs FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own programs" ON programs FOR DELETE USING (auth.uid() = user_id);
 
--- Program Exercises (Via le programme parent)
 CREATE POLICY "Users can view own program exercises" ON program_exercises FOR SELECT USING (program_id IN (SELECT id FROM programs WHERE user_id = auth.uid()));
 CREATE POLICY "Users can insert own program exercises" ON program_exercises FOR INSERT WITH CHECK (program_id IN (SELECT id FROM programs WHERE user_id = auth.uid()));
 CREATE POLICY "Users can update own program exercises" ON program_exercises FOR UPDATE USING (program_id IN (SELECT id FROM programs WHERE user_id = auth.uid()));
 CREATE POLICY "Users can delete own program exercises" ON program_exercises FOR DELETE USING (program_id IN (SELECT id FROM programs WHERE user_id = auth.uid()));
 
--- Workouts (Propriétaire uniquement)
 CREATE POLICY "Users can view own workouts" ON workouts FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own workouts" ON workouts FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own workouts" ON workouts FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own workouts" ON workouts FOR DELETE USING (auth.uid() = user_id);
 
--- Workout Sets (Via le workout parent)
 CREATE POLICY "Users can view sets of own workouts" ON workout_sets FOR SELECT USING (workout_id IN (SELECT id FROM workouts WHERE user_id = auth.uid()));
 CREATE POLICY "Users can insert sets of own workouts" ON workout_sets FOR INSERT WITH CHECK (workout_id IN (SELECT id FROM workouts WHERE user_id = auth.uid()));
 CREATE POLICY "Users can update sets of own workouts" ON workout_sets FOR UPDATE USING (workout_id IN (SELECT id FROM workouts WHERE user_id = auth.uid()));
 CREATE POLICY "Users can delete sets of own workouts" ON workout_sets FOR DELETE USING (workout_id IN (SELECT id FROM workouts WHERE user_id = auth.uid()));
 
--- ==========================================
--- 4. DONNÉES INITIALES (SEED)
--- ==========================================
+-- Seed
 
 INSERT INTO exercises (name, muscle_group) VALUES
   ('Développé couché (Barre)', 'Pectoraux'),
