@@ -40,6 +40,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   const { lang } = useApp();
   const router = useRouter();
   const programIdRef = useRef("");
+  const [paramsResolved, setParamsResolved] = useState(false);
   const [programId, setProgramId] = useState("");
   const [programName, setProgramName] = useState("");
   const [editingName, setEditingName] = useState(false);
@@ -63,6 +64,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     params.then((p) => { 
       setProgramId(p.id); 
       programIdRef.current = p.id;
+      setParamsResolved(true);
     }); 
   }, [params]);
   useEffect(() => { if (!user || !programId) return; loadData(); }, [user, programId]);
@@ -626,7 +628,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
           ) : (
-            <button onClick={() => setShowAdd(true)} className="w-full rounded-xl px-6 py-4 text-center text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2" style={{ backgroundColor: "hsl(var(--card))", border: "1px dashed hsl(var(--inactive-btn-border))", color: "hsl(var(--icon-muted))" }}>
+            <button onClick={() => setShowAdd(true)} disabled={!paramsResolved || loadingData} className="w-full rounded-xl px-6 py-4 text-center text-sm font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" style={{ backgroundColor: "hsl(var(--card))", border: "1px dashed hsl(var(--inactive-btn-border))", color: "hsl(var(--icon-muted))" }}>
               <Plus className="h-4 w-4" />
               Ajouter un exercice
             </button>
