@@ -5,6 +5,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ArrowLeft, Zap, Dumbbell, ChevronRight, Loader2 } from "lucide-react";
+import { useApp } from "@/lib/context";
+import { t } from "@/lib/i18n";
 
 import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
 
@@ -23,6 +25,7 @@ const PUSH_WORKOUT: { name: string; muscleGroup: string; sets: number; repMin: n
 
 export default function WorkoutPage() {
   const { user, loading } = useAuth();
+  const { lang } = useApp();
   const router = useRouter();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loadingPrograms, setLoadingPrograms] = useState(true);
@@ -90,7 +93,8 @@ export default function WorkoutPage() {
           if (lastSets && lastSets.length > 0) {
             const completedSets = lastSets.filter((s: { completed: boolean }) => s.completed);
             if (completedSets.length > 0) {
-              const bestReps = Math.max(...completedSets.map((s: { reps: number }) => s.reps));
+              const repsValues = completedSets.map((s: { reps: number }) => s.reps);
+              const bestReps = repsValues.length > 0 ? Math.max(...repsValues) : ex.target_reps;
               const targetW = ex.target_weight ?? 0;
               const allHitTarget = completedSets.every((s: { reps: number; weight: number }) => s.reps >= ex.target_reps && s.weight >= targetW);
               if (allHitTarget && targetW > 0) {
@@ -118,10 +122,10 @@ export default function WorkoutPage() {
   return (
     <main className="flex min-h-screen flex-col p-4 pb-24 animate-fade-in">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Nouvelle séance</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("workout_new", lang)}</h1>
         <Link href="/programs" className="inline-flex items-center gap-1 text-sm active:scale-95 transition-all" style={{ color: "hsl(var(--inactive-btn-text))" }}>
           <ArrowLeft className="h-4 w-4" />
-          Retour
+          {t("workout_back", lang)}
         </Link>
       </div>
 
@@ -136,20 +140,20 @@ export default function WorkoutPage() {
       >
         <div className="flex items-center gap-2 mb-2">
           <Zap className="h-5 w-5 text-[hsl(var(--text-white))]" />
-          <p className="text-lg font-bold text-[hsl(var(--text-white))]">Séance Push</p>
+          <p className="text-lg font-bold text-[hsl(var(--text-white))]">{t("workout_push", lang)}</p>
         </div>
         <p className="text-sm text-[hsl(var(--text-white-70))]">
-          Développé couché · Incliné · Chest press · Militaire · Élévations · Triceps
+          {t("workout_push_desc", lang)}
         </p>
         <p className="text-xs text-[hsl(var(--text-white-50))] mt-1">
-          24 séries · ~50 min
+          {t("workout_push_info", lang)}
         </p>
         {startingPush && <Loader2 className="h-5 w-5 animate-spin text-[hsl(var(--text-white))] mt-2" />}
       </button>
 
       {programs.length > 0 && (
         <>
-          <p className="text-sm font-medium mb-3 animate-slide-up stagger-1" style={{ color: "hsl(var(--muted-foreground))" }}>Mes programmes</p>
+          <p className="text-sm font-medium mb-3 animate-slide-up stagger-1" style={{ color: "hsl(var(--muted-foreground))" }}>{t("workout_my_programs", lang)}</p>
           <div className="flex flex-col gap-2.5">
             {programs.map((p, idx) => (
               <button

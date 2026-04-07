@@ -182,7 +182,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
 
     if (workout) {
       await cacheWorkoutData(workoutId, workout);
-      setProgramName((workout.programs as unknown as { name: string })?.name ?? "Séance libre");
+      setProgramName((workout.programs as unknown as { name: string })?.name ?? (lang === "en" ? "Free workout" : "Séance libre"));
       setWorkoutStatus(workout.status as string);
       setWorkoutDate(new Date(workout.started_at as string).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }));
 
