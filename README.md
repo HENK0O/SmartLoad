@@ -101,7 +101,9 @@ supabase/
 
 ## Screenshots
 
-![Dashboard](image.png) ![Workout](image-1.png)
+<img width="619" height="1069" alt="image" src="https://github.com/user-attachments/assets/e3f1d7e3-9e02-4309-a56a-c51118bbd96b" />  <img width="669" height="1261" alt="image-1" src="https://github.com/user-attachments/assets/cfd5a69f-24db-4b70-b119-3f98d21de337" />
+
+
 
 ## Author
 
