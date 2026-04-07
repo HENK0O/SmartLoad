@@ -963,13 +963,13 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
       {!isReadOnly && (
         <div className="fixed bottom-0 left-0 right-0 z-40 p-4 pb-6" style={{ backgroundColor: "hsl(var(--card) / 0.98)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", borderTop: "1px solid hsl(var(--card-border))" }}>
           <div className="flex items-center gap-3 mb-3">
-            <button onClick={() => navigateExercise("prev")} disabled={currentExerciseIndex === 0} aria-label="Exercice précédent" className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
+            <button onClick={() => navigateExercise("prev")} disabled={currentExerciseIndex === 0} aria-label={t("workout_previous_exercise", lang)} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
               <ChevronLeft className="h-5 w-5 text-[hsl(var(--text-white))]" />
             </button>
             <div className="flex-1">
               <ProgressBar value={completedSets} max={Math.max(totalSets, 1)} label={`${completedSets}/${totalSets} ${t("workout_sets_completed", lang)}`} />
             </div>
-            <button onClick={() => navigateExercise("next")} disabled={currentExerciseIndex >= groups.length - 1} aria-label="Exercice suivant" className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
+            <button onClick={() => navigateExercise("next")} disabled={currentExerciseIndex >= groups.length - 1} aria-label={t("workout_next_exercise", lang)} className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-30" style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}>
               <ChevronRight className="h-5 w-5 text-[hsl(var(--text-white))]" />
             </button>
           </div>
@@ -1032,7 +1032,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up" style={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", boxShadow: "0 24px 48px hsl(var(--shadow-heavy))" }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-[hsl(var(--text-white))]">Historique — {currentGroup?.exercise.name}</h3>
-              <button onClick={() => setShowExerciseHistory(false)} className="text-xs active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>Fermer</button>
+              <button onClick={() => setShowExerciseHistory(false)} className="text-xs active:scale-95 transition-all" style={{ color: "hsl(var(--muted-foreground))" }}>{t("workout_close", lang)}</button>
             </div>
             {exerciseHistory.length === 0 ? (
               <p className="text-sm text-center py-8" style={{ color: "hsl(var(--muted-foreground-dim))" }}>Pas d'historique pour cet exercice.</p>
@@ -1105,7 +1105,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
               <div className="mb-4 rounded-xl p-4" style={{ backgroundColor: "hsl(45 93% 47% / 0.08)", border: "1px solid hsl(45 93% 47% / 0.2)" }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Trophy className="h-4 w-4" style={{ color: "hsl(45 93% 47%)" }} />
-                  <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>{newPRs.length} {newPRs.length > 1 ? (lang === "en" ? "PRs broken!" : "Records battus !") : (lang === "en" ? "PR broken!" : "Record battu !")}</p>
+                  <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>{newPRs.length} {t("workout_prs_broken", lang)}</p>
                 </div>
                 {newPRs.map((pr, i) => (
                   <p key={i} className="text-xs font-medium" style={{ color: "hsl(45 93% 47% / 0.8)" }}>{pr}</p>
@@ -1120,7 +1120,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      <ConfirmDialog open={showCancelConfirm} title="Annuler la séance" description="Toutes les données de cette séance seront perdues." confirmLabel="Annuler la séance" danger onConfirm={cancelWorkout} onCancel={() => setShowCancelConfirm(false)} />
+      <ConfirmDialog open={showCancelConfirm} title={t("dialog_cancel_workout_title", lang)} description={t("dialog_cancel_workout_desc", lang)} confirmLabel={t("dialog_cancel_workout_confirm", lang)} danger onConfirm={cancelWorkout} onCancel={() => setShowCancelConfirm(false)} />
     </main>
   );
 }

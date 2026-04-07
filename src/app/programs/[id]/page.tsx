@@ -2,7 +2,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
+import { t } from "@/lib/i18n";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { EXERCISE_CATALOG, getFullName } from "@/lib/exercises";
 import type { ExerciseDef } from "@/lib/exercises";
@@ -35,6 +37,7 @@ const MUSCLE_COLORS: Record<string, { bg: string; text: string }> = {
 
 export default function ProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, loading } = useAuth();
+  const { lang } = useApp();
   const router = useRouter();
   const [programId, setProgramId] = useState("");
   const [programName, setProgramName] = useState("");
@@ -354,10 +357,10 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                       <div className="grid grid-cols-4 gap-2">
                         {[
-                          { label: "Séries", value: editSets, set: setEditSets, min: 1, max: 10 },
-                          { label: "Reps min", value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
-                          { label: "Reps max", value: editRepMax, set: setEditRepMax, min: editRepMin, max: 30 },
-                          { label: "Poids", value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
+                          { label: t("program_sets", lang), value: editSets, set: setEditSets, min: 1, max: 10 },
+                          { label: t("program_reps_min", lang), value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
+                          { label: t("program_reps_max", lang), value: editRepMax, set: setEditRepMax, min: editRepMin, max: 30 },
+                          { label: t("program_weight", lang), value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
                         ].map((field) => (
                           <div key={field.label}>
                             <label className="text-[10px] text-[hsl(var(--muted-foreground-dim))] block mb-1">{field.label}</label>
@@ -365,7 +368,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                         ))}
                       </div>
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground-dim))] mt-2">Double progression : {editRepMin}→{editRepMax} reps, puis +poids</p>
+                      <p className="text-[10px] text-[hsl(var(--muted-foreground-dim))] mt-2">{t("program_double_progression", lang).replace("{min}", String(editRepMin)).replace("{max}", String(editRepMax))}</p>
                     </div>
                   ) : (
                     <div>
@@ -558,7 +561,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
         </>
       )}
 
-      <ConfirmDialog open={deleteExerciseConfirm !== null} title="Retirer l'exercice" description="Cet exercice sera retiré du programme." confirmLabel="Retirer" danger onConfirm={() => deleteExerciseConfirm && removeExercise(deleteExerciseConfirm)} onCancel={() => setDeleteExerciseConfirm(null)} />
+      <ConfirmDialog open={deleteExerciseConfirm !== null} title={t("dialog_remove_exercise_title", lang)} description={t("dialog_remove_exercise_desc", lang)} confirmLabel={t("dialog_remove_exercise_confirm", lang)} danger onConfirm={() => deleteExerciseConfirm && removeExercise(deleteExerciseConfirm)} onCancel={() => setDeleteExerciseConfirm(null)} />
     </main>
   );
 }
