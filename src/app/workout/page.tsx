@@ -83,33 +83,46 @@ export default function WorkoutPage() {
     if (!user) return;
     const { data: workout } = await supabase.from("workouts").insert({ user_id: user.id, program_id: programId, status: "in_progress" }).select().single();
     if (!workout) return;
-    const { data: exercises } = await supabase.from("program_exercises").select("exercise_id, target_sets, target_reps, target_weight").eq("program_id", programId).order("sort_order");
+    const { data: exercises } = await supabase.from("program_exercises").select("exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max").eq("program_id", programId).order("sort_order");
     if (exercises && exercises.length > 0) {
       const { data: lastWorkout } = await supabase.from("workouts").select("id").eq("user_id", user.id).eq("program_id", programId).eq("status", "completed").neq("id", workout.id).order("started_at", { ascending: false }).limit(1).single();
       for (const ex of exercises) {
+        const targetReps = ex.target_reps;
+        const targetWeight = ex.target_weight ?? 0;
+        const targetSets = ex.target_sets;
+        const repRangeMin = ex.rep_range_min ?? targetReps;
+        const repRangeMax = ex.rep_range_max ?? targetReps + 4;
+        
         let sets: { reps: number; weight: number }[] = [];
+        
         if (lastWorkout) {
           const { data: lastSets } = await supabase.from("workout_sets").select("reps, weight, completed").eq("workout_id", lastWorkout.id).eq("exercise_id", ex.exercise_id).order("set_number");
           if (lastSets && lastSets.length > 0) {
             const completedSets = lastSets.filter((s: { completed: boolean }) => s.completed);
             if (completedSets.length > 0) {
-              const repsValues = completedSets.map((s: { reps: number }) => s.reps);
-              const bestReps = repsValues.length > 0 ? Math.max(...repsValues) : ex.target_reps;
-              const targetW = ex.target_weight ?? 0;
-              const allHitTarget = completedSets.every((s: { reps: number; weight: number }) => s.reps >= ex.target_reps && s.weight >= targetW);
-              if (allHitTarget && targetW > 0) {
-                const newWeight = Math.round((targetW + 2.5) * 10) / 10;
-                for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: ex.target_reps, weight: newWeight });
+              const avgReps = Math.round(completedSets.reduce((sum: number, s: { reps: number }) => sum + s.reps, 0) / completedSets.length);
+              const avgWeight = Math.round(completedSets.reduce((sum: number, s: { weight: number }) => sum + s.weight, 0) / completedSets.length * 10) / 10;
+              
+              const allHitTarget = completedSets.every((s: { reps: number; weight: number }) => 
+                s.reps >= targetReps && s.weight >= targetWeight
+              );
+              
+              if (allHitTarget && targetWeight > 0) {
+                const newWeight = Math.round((targetWeight + 2.5) * 10) / 10;
+                for (let i = 0; i < targetSets; i++) sets.push({ reps: targetReps, weight: newWeight });
+              } else if (avgReps >= targetReps && avgWeight >= targetWeight * 0.9) {
+                for (let i = 0; i < targetSets; i++) sets.push({ reps: targetReps, weight: avgWeight });
               } else {
-                for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: bestReps, weight: targetW });
+                for (let i = 0; i < targetSets; i++) sets.push({ reps: targetReps, weight: targetWeight });
               }
             }
           }
         }
+        
         if (sets.length === 0) {
-          const targetW = ex.target_weight ?? 0;
-          for (let i = 0; i < ex.target_sets; i++) sets.push({ reps: ex.target_reps, weight: targetW });
+          for (let i = 0; i < targetSets; i++) sets.push({ reps: targetReps, weight: targetWeight });
         }
+        
         const setsToInsert = sets.map((s, i) => ({ workout_id: workout.id, exercise_id: ex.exercise_id, set_number: i + 1, reps: s.reps, weight: s.weight, rest_sec: 90, completed: false }));
         if (setsToInsert.length > 0) await supabase.from("workout_sets").insert(setsToInsert);
       }
