@@ -102,16 +102,6 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [newPRs, setNewPRs] = useState<string[]>([]);
   const [showPlates, setShowPlates] = useState<string | null>(null);
   const [completedSetAnimations, setCompletedSetAnimations] = useState<Record<string, boolean>>({});
-  const [showWeightTooltip, setShowWeightTooltip] = useState<string | null>(null);
-  const [dismissedTooltips, setDismissedTooltips] = useState<Set<string>>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("smartload-dismissed-weight-tooltips");
-        return stored ? new Set(JSON.parse(stored)) : new Set<string>();
-      } catch { return new Set<string>(); }
-    }
-    return new Set<string>();
-  });
   const [showPRBadge, setShowPRBadge] = useState(false);
   const [prBadgeInfo, setPRBadgeInfo] = useState({ exercise: "", oneRM: 0 });
   const [noteEditingSet, setNoteEditingSet] = useState<string | null>(null);
@@ -784,33 +774,9 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                             placeholder={t("workout_weight_placeholder", lang)}
                             onChange={(e) => handleSetInput(set.id, "weight", e.target.value)}
                             onBlur={() => handleSetBlur(set.id, "weight")}
-                            onFocus={() => {
-                              if (set.weight === 0 && !dismissedTooltips.has(currentGroup.exercise.id)) {
-                                setShowWeightTooltip(currentGroup.exercise.id);
-                              }
-                            }}
                             className="w-full rounded-xl px-3 py-2.5 text-center text-lg font-semibold text-[hsl(var(--text-white))] focus:outline-none transition-all placeholder:text-[hsl(var(--muted-foreground-dim))] placeholder:font-normal placeholder:text-sm"
                             style={{ backgroundColor: "hsl(var(--card-bg-muted))", border: "1px solid hsl(var(--inactive-btn-border))" }}
                           />
-                          {showWeightTooltip === currentGroup.exercise.id && !dismissedTooltips.has(currentGroup.exercise.id) && (
-                            <div className="absolute -top-12 left-0 right-0 animate-scale-in">
-                              <div className="rounded-lg px-3 py-2 text-[11px] text-center leading-tight" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)", border: "1px solid hsl(142 71% 45% / 0.2)" }}>
-                                {t("workout_enter_weight", lang)}
-                                <button
-                                  onClick={() => {
-                                    const next = new Set(dismissedTooltips);
-                                    next.add(currentGroup.exercise.id);
-                                    setDismissedTooltips(next);
-                                    setShowWeightTooltip(null);
-                                    try { localStorage.setItem("smartload-dismissed-weight-tooltips", JSON.stringify([...next])); } catch {}
-                                  }}
-                                  className="ml-1 font-bold"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          )}
                           {hasComparison && weightDiff > 0 && (
                             <span className="absolute -top-1 -right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "hsl(142 71% 45% / 0.15)", color: "hsl(142 71% 45%)" }}>+{weightDiff}</span>
                           )}

@@ -57,51 +57,53 @@ export default function SettingsPage() {
   }
 
   async function saveUnit(newUnit: "kg" | "lbs") {
+    const currentUnit = unit;
+    if (currentUnit === newUnit) return;
+    
     setUnit(newUnit);
     setSaving(true);
+    
+    const toKg = currentUnit === "lbs" ? 0.453592 : 1;
+    const fromKg = newUnit === "lbs" ? 2.20462 : 1;
+    const factor = fromKg / toKg;
+    
     try {
-      const factor = newUnit === "lbs" ? 2.20462 : 1 / 2.20462;
-      const { data: programs, error: programsError } = await supabase.from("programs").select("id").eq("user_id", user!.id);
-      if (programsError) throw programsError;
-
-      if (programs) {
-        const programIds = programs.map((p) => p.id);
-        const { data: peList, error: peError } = await supabase.from("program_exercises").select("id, target_weight").in("program_id", programIds);
-        if (peError) throw peError;
-
-        if (peList) {
-          const peUpdates = peList.map((pe) => ({
-            id: pe.id,
-            target_weight: Math.round(pe.target_weight * factor * 10) / 10,
-          }));
-          for (const update of peUpdates) {
-            await supabase.from("program_exercises").update({ target_weight: update.target_weight }).eq("id", update.id);
-          }
-        }
-
-        const { data: workouts, error: workoutsError } = await supabase.from("workouts").select("id").eq("user_id", user!.id);
-        if (workoutsError) throw workoutsError;
-
-        if (workouts) {
-          const workoutIds = workouts.map((w) => w.id);
-          const { data: sets, error: setsError } = await supabase.from("workout_sets").select("id, weight").in("workout_id", workoutIds);
-          if (setsError) throw setsError;
-
-          if (sets) {
-            const setUpdates = sets.map((s) => ({
-              id: s.id,
-              weight: Math.round(s.weight * factor * 10) / 10,
+      const { data: programs } = await supabase.from("programs").select("id").eq("user_id", user!.id);
+      const programIds = programs?.map((p) => p.id) || [];
+      
+      await Promise.all([
+        supabase.from("program_exercises").select("id, target_weight").in("program_id", programIds).then(async ({ data: peList }) => {
+          if (peList && peList.length > 0) {
+            const updates = peList.map((pe) => ({
+              id: pe.id,
+              target_weight: Math.round((pe.target_weight || 0) * factor * 10) / 10,
             }));
-            for (const update of setUpdates) {
-              await supabase.from("workout_sets").update({ weight: update.weight }).eq("id", update.id);
-            }
+            await Promise.all(updates.map((u) => supabase.from("program_exercises").update({ target_weight: u.target_weight }).eq("id", u.id)));
           }
-        }
-      }
-      const { error: profileError } = await supabase.from("profiles").update({ unit: newUnit }).eq("id", user!.id);
-      if (profileError) throw profileError;
+        }),
+        
+        supabase.from("workout_sets").select("id, weight").in("workout_id", (await supabase.from("workouts").select("id").eq("user_id", user!.id)).data?.map((w) => w.id) || []).then(async ({ data: sets }) => {
+          if (sets && sets.length > 0) {
+            const updates = sets.map((s) => ({
+              id: s.id,
+              weight: Math.round((s.weight || 0) * factor * 10) / 10,
+            }));
+            await Promise.all(updates.map((u) => supabase.from("workout_sets").update({ weight: u.weight }).eq("id", u.id)));
+          }
+        }),
+        
+        supabase.from("profiles").select("id, weight").eq("id", user!.id).single().then(async ({ data: profile }) => {
+          if (profile && profile.weight) {
+            await supabase.from("profiles").update({ weight: Math.round(profile.weight * factor * 10) / 10 }).eq("id", user!.id);
+            setProfileWeight(String(Math.round(profile.weight * factor * 10) / 10));
+          }
+        }),
+      ]);
+      
+      await supabase.from("profiles").update({ unit: newUnit }).eq("id", user!.id);
     } catch (e) {
       console.error("Error saving unit:", e);
+      setUnit(currentUnit);
     } finally {
       setSaving(false);
       setSaved(true);
