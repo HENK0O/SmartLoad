@@ -134,10 +134,8 @@ const fr: T = {
   dialog_delete_program_desc: "Cette action est irréversible.",
   dialog_delete_program_confirm: "Supprimer",
   program_sets: "Séries",
-  program_reps_min: "Reps min",
-  program_reps_max: "Reps max",
+  program_reps: "Reps",
   program_weight: "Poids",
-  program_double_progression: "Double progression : {min}→{max} reps, puis +poids",
   workout_show_all: "Voir tout",
   workout_all_exercises: "Tous les exercices",
 };
@@ -274,10 +272,8 @@ const en: T = {
   dialog_delete_program_desc: "This action cannot be undone.",
   dialog_delete_program_confirm: "Delete",
   program_sets: "Sets",
-  program_reps_min: "Reps min",
-  program_reps_max: "Reps max",
+  program_reps: "Reps",
   program_weight: "Weight",
-  program_double_progression: "Double progression: {min}→{max} reps, then +weight",
   workout_show_all: "See all",
   workout_all_exercises: "All exercises",
 };

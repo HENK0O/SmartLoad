@@ -308,7 +308,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     setDeleteExerciseConfirm(null);
   }
 
-  function startEdit(pe: ProgramExercise) { setEditingId(pe.id); setEditSets(pe.target_sets); setEditRepMin(pe.rep_range_min); setEditRepMax(pe.rep_range_max); setEditWeight(pe.target_weight); }
+  function startEdit(pe: ProgramExercise) { setEditingId(pe.id); setEditSets(pe.target_sets); setEditRepMin(pe.target_reps); setEditRepMax(pe.target_reps); setEditWeight(pe.target_weight); }
 
   async function reorderExercise(id: string, direction: "up" | "down") {
     const idx = programExercises.findIndex((pe) => pe.id === id);
@@ -331,10 +331,16 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function saveEdit(id: string) {
-    if (editRepMin > editRepMax) return;
-    const { error: err } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight, rep_range_min: editRepMin, rep_range_max: editRepMax }).eq("id", id);
-    if (err && err.code === "42703") { const { error: err2 } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight }).eq("id", id); if (!err2) { setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight, rep_range_min: editRepMin, rep_range_max: editRepMax } : pe)); } }
-    else if (!err) { setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight, rep_range_min: editRepMin, rep_range_max: editRepMax } : pe)); }
+    const { error: err } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight }).eq("id", id);
+    if (err && err.code === "42703") { 
+      const { error: err2 } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight }).eq("id", id); 
+      if (!err2) { 
+        setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight } : pe)); 
+      } 
+    }
+    else if (!err) { 
+      setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight } : pe)); 
+    }
     setEditingId(null);
   }
 
@@ -430,11 +436,10 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         {[
                           { label: t("program_sets", lang), value: editSets, set: setEditSets, min: 1, max: 10 },
-                          { label: t("program_reps_min", lang), value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
-                          { label: t("program_reps_max", lang), value: editRepMax, set: setEditRepMax, min: editRepMin, max: 30 },
+                          { label: t("program_reps", lang), value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
                           { label: t("program_weight", lang), value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
                         ].map((field) => (
                           <div key={field.label}>
@@ -443,7 +448,6 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                           </div>
                         ))}
                       </div>
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground-dim))] mt-2">{t("program_double_progression", lang).replace("{min}", String(editRepMin)).replace("{max}", String(editRepMax))}</p>
                     </div>
                   ) : (
                     <div>
