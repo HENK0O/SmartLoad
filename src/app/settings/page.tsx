@@ -39,7 +39,6 @@ export default function SettingsPage() {
   async function loadSettings() {
     const { data } = await supabase.from("profiles").select("*").eq("id", user!.id).single();
     if (data) {
-      if (data.unit) setUnit(data.unit as "kg" | "lbs");
       if (data.rest_time) { setRestTime(data.rest_time); setRestTimeInput(String(data.rest_time)); }
       if (data.timer_sound !== null && data.timer_sound !== undefined) setTimerSound(data.timer_sound);
       if (data.show_rpe !== null && data.show_rpe !== undefined) setShowRPE(data.show_rpe);

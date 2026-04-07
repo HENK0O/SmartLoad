@@ -46,9 +46,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function setLang(l: Lang) {
     setLangState(l);
     localStorage.setItem("smartload-lang", l);
-    const newUnit = l === "fr" ? "kg" : "lbs";
-    localStorage.setItem("smartload-unit", newUnit);
-    setUnitState(newUnit);
   }
 
   function setTheme(t: "dark" | "light") {
