@@ -203,41 +203,87 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
       return;
     }
     
+    if (!programId) {
+      console.error("Program ID not set");
+      setShowSupportPopup(false);
+      setShowAdd(false);
+      setSelectedBase(null);
+      return;
+    }
+    
     const fullName = getFullName(selectedBase.baseName, support);
-    const exerciseId = await getOrCreateExercise(fullName, selectedBase.muscleGroup);
-    if (!exerciseId) {
-      console.error("Failed to get or create exercise");
-      setShowSupportPopup(false);
-      setShowAdd(false);
-      setSelectedBase(null);
-      return;
-    }
     
-    const order = programExercises.length;
-    const insertData: Record<string, unknown> = { program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: null, rep_range_min: 8, rep_range_max: 12, sort_order: order };
-    const { data, error } = await supabase.from("program_exercises").insert(insertData).select("id, exercise_id, target_sets, target_reps, target_weight, rep_range_min, rep_range_max, sort_order").single();
-    
-    if (error && error.code === "42703") {
-      const { data: fallbackData } = await supabase.from("program_exercises").insert({ program_id: programId, exercise_id: exerciseId, target_sets: 4, target_reps: 8, target_weight: null, sort_order: order }).select("id, exercise_id, target_sets, target_reps, target_weight, sort_order").single();
-      if (fallbackData) {
-        const newPe = { ...fallbackData, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: 8, rep_range_max: 12 } as ProgramExercise;
-        setProgramExercises([...programExercises, newPe]);
-        const defaults: TargetSet[] = [];
-        for (let i = 1; i <= 4; i++) defaults.push({ id: `default-${fallbackData.id}-${i}`, program_exercise_id: fallbackData.id, set_number: i, target_reps: 8, target_weight: null, sort_order: i - 1 });
-        setTargetSets({ ...targetSets, [fallbackData.id]: defaults });
+    try {
+      const exerciseId = await getOrCreateExercise(fullName, selectedBase.muscleGroup);
+      if (!exerciseId) {
+        console.error("Failed to get or create exercise - no ID returned");
+        setShowSupportPopup(false);
+        setShowAdd(false);
+        setSelectedBase(null);
+        return;
       }
-      setSelectedBase(null);
-      setShowSupportPopup(false);
-      setShowAdd(false);
-      return;
-    }
-    
-    if (data) {
-      const newPe = { ...data, exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup }, rep_range_min: data.rep_range_min || 8, rep_range_max: data.rep_range_max || 12 } as ProgramExercise;
-      setProgramExercises([...programExercises, newPe]);
+      
+      const order = programExercises.length;
+      
+      const { data: existingEx } = await supabase.from("exercises").select("id").eq("name", fullName).single();
+      if (!existingEx) {
+        console.error("Exercise was not created properly");
+        setShowSupportPopup(false);
+        setShowAdd(false);
+        setSelectedBase(null);
+        return;
+      }
+      
+      const insertPayload = {
+        program_id: programId,
+        exercise_id: exerciseId,
+        target_sets: 4,
+        target_reps: 8,
+        target_weight: null,
+        sort_order: order,
+      };
+      
+      const { data: peData, error: peError } = await supabase
+        .from("program_exercises")
+        .insert(insertPayload)
+        .select("id, exercise_id, target_sets, target_reps, target_weight, sort_order")
+        .single();
+      
+      if (peError) {
+        console.error("Error inserting program exercise:", peError);
+        setShowSupportPopup(false);
+        setShowAdd(false);
+        setSelectedBase(null);
+        return;
+      }
+      
+      const newPe = {
+        ...peData,
+        exercises: { id: exerciseId, name: fullName, muscle_group: selectedBase.muscleGroup },
+        rep_range_min: 8,
+        rep_range_max: 12,
+      } as ProgramExercise;
+      
+      const currentExercises = programExercises || [];
+      setProgramExercises([...currentExercises, newPe]);
+      
       const defaults: TargetSet[] = [];
-      for (let i = 1; i <= data.target_sets; i++) defaults.push({ id: `default-${data.id}-${i}`, program_exercise_id: data.id, set_number: i, target_reps: data.rep_range_min || 8, target_weight: data.target_weight, sort_order: i - 1 });
-      setTargetSets({ ...targetSets, [data.id]: defaults });
+      for (let i = 1; i <= 4; i++) {
+        defaults.push({
+          id: `temp-${Date.now()}-${i}`,
+          program_exercise_id: peData.id,
+          set_number: i,
+          target_reps: 8,
+          target_weight: null,
+          sort_order: i - 1,
+        });
+      }
+      
+      const currentTargetSets = targetSets || {};
+      setTargetSets({ ...currentTargetSets, [peData.id]: defaults });
+      
+    } catch (err) {
+      console.error("Exception in addExercise:", err);
     }
     
     setSelectedBase(null);
