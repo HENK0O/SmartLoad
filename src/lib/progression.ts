@@ -477,11 +477,49 @@ function analyzeProgressionInternal(
   };
 }
 
+function formatWeight(weight: number, unit: "kg" | "lbs"): string {
+  if (unit === "lbs") {
+    return Math.round(weight * 2.20462 * 10) / 10 + " lbs";
+  }
+  return weight + " kg";
+}
+
+function convertWeight(weight: number, fromUnit: "kg" | "lbs", toUnit: "kg" | "lbs"): number {
+  if (fromUnit === toUnit) return weight;
+  if (toUnit === "lbs") return Math.round(weight * 2.20462 * 10) / 10;
+  return Math.round(weight / 2.20462 * 10) / 10;
+}
+
 export function analyzeProgression(
   history: ExerciseHistory,
-  targets: ProgressionTargets
+  targets: ProgressionTargets,
+  unit: "kg" | "lbs" = "kg"
 ): ProgressionAnalysis {
-  return analyzeProgressionInternal(history, targets);
+  const result = analyzeProgressionInternal(history, targets);
+  
+  const convertOption = (option: ProgressionOption): ProgressionOption => {
+    const convertedWeight = convertWeight(option.weight, "kg", unit);
+    return {
+      ...option,
+      weight: convertedWeight,
+      label: option.label.replace(/\d+\.?\d*\s*kg/, formatWeight(option.weight, unit)),
+    };
+  };
+  
+  if (result.deloadOption) {
+    result.deloadOption = convertOption(result.deloadOption);
+  }
+  result.primaryOption = convertOption(result.primaryOption);
+  result.alternativeOption = convertOption(result.alternativeOption);
+  
+  result.suggestedWeight = convertWeight(result.suggestedWeight, "kg", unit);
+  result.current1RM = convertWeight(result.current1RM, "kg", unit);
+  result.bestSession1RM = convertWeight(result.bestSession1RM, "kg", unit);
+  result.totalVolumeLastSession = unit === "lbs" 
+    ? Math.round(result.totalVolumeLastSession * 2.20462 * 10) / 10 
+    : result.totalVolumeLastSession;
+  
+  return result;
 }
 
 export function getAutoFill(

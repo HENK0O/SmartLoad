@@ -277,7 +277,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           
           const history: ExerciseHistory = { exerciseId: group.exercise.id, exerciseName: group.exercise.name, muscleGroup: group.exercise.muscle_group, sessions };
           const targets: ProgressionTargets = { targetSets: group.targetSets, repRangeMin: group.repRangeMin, repRangeMax: group.repRangeMax, currentWeight: group.targetWeight };
-          const analysis = analyzeProgression(history, targets);
+          const analysis = analyzeProgression(history, targets, unit);
           info[group.exercise.id] = { analysis, primary: analysis.primaryOption, alternative: analysis.alternativeOption, deload: analysis.deloadOption };
         }
 
