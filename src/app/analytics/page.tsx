@@ -20,7 +20,7 @@ type PeriodFilter = "7d" | "30d" | "90d" | "all";
 
 export default function AnalyticsPage() {
   const { user, loading } = useAuth();
-  const { lang } = useApp();
+  const { lang, unit } = useApp();
   const router = useRouter();
   const [prs, setPRs] = useState<PR[]>([]);
   const [volumeData, setVolumeData] = useState<VolumeData[]>([]);
@@ -29,13 +29,10 @@ export default function AnalyticsPage() {
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [avgVolumePerWorkout, setAvgVolumePerWorkout] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
-  const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("7d");
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
-  useEffect(() => { if (!user) return; loadData(); loadUnit(); }, [user, periodFilter]);
-
-  async function loadUnit() { const { data } = await supabase.from("profiles").select("unit").eq("id", user!.id).single(); if (data) setUnit(data.unit as "kg" | "lbs"); }
+  useEffect(() => { if (!user) return; loadData(); }, [user, periodFilter]);
 
   function displayWeight(kg: number): string { 
     if (unit === "lbs") return Math.round(kg * 2.20462 * 10) / 10 + " lbs"; 

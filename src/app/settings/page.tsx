@@ -19,9 +19,8 @@ const greenActive = (active: boolean) => active ? greenGradient : mutedBtnStyle;
 
 export default function SettingsPage() {
   const { user, loading, signOut } = useAuth();
-  const { lang, setLang, theme, setTheme } = useApp();
+  const { lang, setLang, theme, setTheme, unit, setUnit } = useApp();
   const router = useRouter();
-  const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [restTime, setRestTime] = useState(90);
   const [restTimeInput, setRestTimeInput] = useState("90");
   const [timerSound, setTimerSound] = useState(true);
@@ -57,53 +56,15 @@ export default function SettingsPage() {
   }
 
   async function saveUnit(newUnit: "kg" | "lbs") {
-    const currentUnit = unit;
-    if (currentUnit === newUnit) return;
+    if (unit === newUnit) return;
     
     setUnit(newUnit);
     setSaving(true);
     
-    const toKg = currentUnit === "lbs" ? 0.453592 : 1;
-    const fromKg = newUnit === "lbs" ? 2.20462 : 1;
-    const factor = fromKg / toKg;
-    
     try {
-      const { data: programs } = await supabase.from("programs").select("id").eq("user_id", user!.id);
-      const programIds = programs?.map((p) => p.id) || [];
-      
-      await Promise.all([
-        supabase.from("program_exercises").select("id, target_weight").in("program_id", programIds).then(async ({ data: peList }) => {
-          if (peList && peList.length > 0) {
-            const updates = peList.map((pe) => ({
-              id: pe.id,
-              target_weight: Math.round((pe.target_weight || 0) * factor * 10) / 10,
-            }));
-            await Promise.all(updates.map((u) => supabase.from("program_exercises").update({ target_weight: u.target_weight }).eq("id", u.id)));
-          }
-        }),
-        
-        supabase.from("workout_sets").select("id, weight").in("workout_id", (await supabase.from("workouts").select("id").eq("user_id", user!.id)).data?.map((w) => w.id) || []).then(async ({ data: sets }) => {
-          if (sets && sets.length > 0) {
-            const updates = sets.map((s) => ({
-              id: s.id,
-              weight: Math.round((s.weight || 0) * factor * 10) / 10,
-            }));
-            await Promise.all(updates.map((u) => supabase.from("workout_sets").update({ weight: u.weight }).eq("id", u.id)));
-          }
-        }),
-        
-        supabase.from("profiles").select("id, weight").eq("id", user!.id).single().then(async ({ data: profile }) => {
-          if (profile && profile.weight) {
-            await supabase.from("profiles").update({ weight: Math.round(profile.weight * factor * 10) / 10 }).eq("id", user!.id);
-            setProfileWeight(String(Math.round(profile.weight * factor * 10) / 10));
-          }
-        }),
-      ]);
-      
       await supabase.from("profiles").update({ unit: newUnit }).eq("id", user!.id);
     } catch (e) {
       console.error("Error saving unit:", e);
-      setUnit(currentUnit);
     } finally {
       setSaving(false);
       setSaved(true);

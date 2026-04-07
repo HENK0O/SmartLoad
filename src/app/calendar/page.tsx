@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/lib/context";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, CalendarDays, Dumbbell, ArrowRight } from "lucide-react";
@@ -17,20 +18,19 @@ const DAYS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 export default function CalendarPage() {
   const { user, loading } = useAuth();
+  const { unit } = useApp();
   const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [workoutsByDate, setWorkoutsByDate] = useState<Record<string, CalendarWorkout[]>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedWorkouts, setSelectedWorkouts] = useState<CalendarWorkout[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [hasAnyWorkout, setHasAnyWorkout] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
-  useEffect(() => { if (!user) return; loadWorkouts(); loadUnit(); }, [user, currentDate.getFullYear(), currentDate.getMonth()]);
+  useEffect(() => { if (!user) return; loadWorkouts(); }, [user, currentDate.getFullYear(), currentDate.getMonth()]);
 
-  async function loadUnit() { const { data } = await supabase.from("profiles").select("unit").eq("id", user!.id).single(); if (data) setUnit(data.unit as "kg" | "lbs"); }
   function displayWeight(kg: number): string { if (unit === "lbs") return Math.round(kg * 2.20462 * 10) / 10 + " lbs"; return kg + " kg"; }
 
   async function loadWorkouts() {

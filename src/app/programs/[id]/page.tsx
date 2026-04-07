@@ -37,7 +37,23 @@ const MUSCLE_COLORS: Record<string, { bg: string; text: string }> = {
 
 export default function ProgramDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, loading } = useAuth();
-  const { lang } = useApp();
+  const { lang, unit } = useApp();
+
+  const unitLabel = unit === "lbs" ? "lbs" : "kg";
+
+  function toDisplay(kg: number | null): string {
+    if (kg === null || kg === 0) return "";
+    if (unit === "lbs") return String(Math.round(kg * 2.20462 * 10) / 10);
+    return String(kg);
+  }
+
+  function toKg(displayVal: string): number | null {
+    if (displayVal === "") return null;
+    const v = parseFloat(displayVal);
+    if (isNaN(v) || v < 0) return null;
+    if (unit === "lbs") return Math.round(v / 2.20462 * 10) / 10;
+    return v;
+  }
   const router = useRouter();
   const programIdRef = useRef("");
   const [paramsResolved, setParamsResolved] = useState(false);
@@ -308,7 +324,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
     setDeleteExerciseConfirm(null);
   }
 
-  function startEdit(pe: ProgramExercise) { setEditingId(pe.id); setEditSets(pe.target_sets); setEditRepMin(pe.target_reps); setEditRepMax(pe.target_reps); setEditWeight(pe.target_weight); }
+  function startEdit(pe: ProgramExercise) { setEditingId(pe.id); setEditSets(pe.target_sets); setEditRepMin(pe.target_reps); setEditRepMax(pe.target_reps); setEditWeight(pe.target_weight !== null ? toDisplay(pe.target_weight) as unknown as number : null); }
 
   async function reorderExercise(id: string, direction: "up" | "down") {
     const idx = programExercises.findIndex((pe) => pe.id === id);
@@ -331,15 +347,16 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function saveEdit(id: string) {
-    const { error: err } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight }).eq("id", id);
+    const weightInKg = editWeight !== null ? toKg(String(editWeight)) : null;
+    const { error: err } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: weightInKg }).eq("id", id);
     if (err && err.code === "42703") { 
-      const { error: err2 } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: editWeight }).eq("id", id); 
+      const { error: err2 } = await supabase.from("program_exercises").update({ target_sets: editSets, target_reps: editRepMin, target_weight: weightInKg }).eq("id", id); 
       if (!err2) { 
-        setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight } : pe)); 
+        setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: weightInKg } : pe)); 
       } 
     }
     else if (!err) { 
-      setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: editWeight } : pe)); 
+      setProgramExercises(programExercises.map((pe) => pe.id === id ? { ...pe, target_sets: editSets, target_reps: editRepMin, target_weight: weightInKg } : pe)); 
     }
     setEditingId(null);
   }
@@ -440,7 +457,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                         {[
                           { label: t("program_sets", lang), value: editSets, set: setEditSets, min: 1, max: 10 },
                           { label: t("program_reps", lang), value: editRepMin, set: setEditRepMin, min: 1, max: 30 },
-                          { label: t("program_weight", lang), value: editWeight, set: setEditWeight, min: 0, max: 999, step: 0.5 },
+                          { label: `${t("program_weight", lang)} (${unitLabel})`, value: editWeight, set: setEditWeight, min: 0, max: 999, step: unit === "lbs" ? 1 : 0.5 },
                         ].map((field) => (
                           <div key={field.label}>
                             <label className="text-[10px] text-[hsl(var(--muted-foreground-dim))] block mb-1">{field.label}</label>
@@ -501,20 +518,20 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                                 type="number"
                                 inputMode="decimal"
                                 min={0}
-                                step={0.5}
-                                value={inlineSetValues[`${s.id}-weight`] !== undefined ? inlineSetValues[`${s.id}-weight`] : (s.target_weight ?? "")}
+                                step={unit === "lbs" ? 1 : 0.5}
+                                value={inlineSetValues[`${s.id}-weight`] !== undefined ? inlineSetValues[`${s.id}-weight`] : toDisplay(s.target_weight)}
                                 onChange={(e) => {
                                   const key = `${s.id}-weight`;
                                   setInlineSetValues({ ...inlineSetValues, [key]: e.target.value });
-                                  const v = e.target.value === "" ? null : parseFloat(e.target.value);
-                                  if (v === null || (!isNaN(v) && v >= 0)) updateSetField(pe.id, si, "target_weight", v);
+                                  const kg = toKg(e.target.value);
+                                  if (kg !== null || e.target.value === "") updateSetField(pe.id, si, "target_weight", kg);
                                 }}
                                 onBlur={() => {
-                                  const raw = inlineSetValues[`${s.id}-weight`] ?? (s.target_weight === null ? "" : String(s.target_weight));
-                                  const v = raw === "" ? null : parseFloat(raw);
-                                  if (v === null || (!isNaN(v) && v >= 0)) commitSetField(pe.id, si, "target_weight", v);
+                                  const raw = inlineSetValues[`${s.id}-weight`] ?? toDisplay(s.target_weight);
+                                  const kg = toKg(raw);
+                                  if (kg !== null || raw === "") commitSetField(pe.id, si, "target_weight", kg);
                                 }}
-                                placeholder="Poids"
+                                placeholder={unitLabel}
                                 className="flex-1 rounded-lg px-2 py-1.5 text-sm font-semibold text-white focus:outline-none transition-all placeholder:text-[hsl(var(--muted-foreground-dim))] placeholder:font-normal"
                                 style={{ backgroundColor: "#2a2a2a", border: "1px solid hsl(var(--inactive-btn-border))" }}
                                 onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
@@ -540,7 +557,7 @@ export default function ProgramDetailPage({ params }: { params: Promise<{ id: st
                                 style={{ backgroundColor: "#2a2a2a", border: "1px solid hsl(var(--inactive-btn-border))" }}
                                 onFocus={(e) => (e.currentTarget.style.borderColor = "hsl(142 71% 45% / 0.5)")}
                               />
-                              <span className="text-[11px] text-[hsl(var(--muted-foreground-dim))]">reps</span>
+                              <span className="text-[10px] text-[hsl(var(--muted-foreground-dim))]">{unitLabel}</span>
                             </div>
                             {sets.length > 1 && (
                               <button

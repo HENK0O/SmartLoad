@@ -67,7 +67,7 @@ function calculatePlates(targetWeight: number): { plates: { size: number; count:
 
 export default function WorkoutDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user, loading } = useAuth();
-  const { lang } = useApp();
+  const { lang, unit } = useApp();
   const router = useRouter();
   const [workoutId, setWorkoutId] = useState("");
   const [programName, setProgramName] = useState("");
@@ -76,7 +76,6 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   const [loadingData, setLoadingData] = useState(true);
   const [workoutDate, setWorkoutDate] = useState("");
   const [smartProgression, setSmartProgression] = useState<Record<string, SmartProgression>>({});
-  const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [restTimers, setRestTimers] = useState<Record<string, number>>({});
   const [timerActive, setTimerActive] = useState<string | null>(null);
   const [isOnline, setIsOnlineState] = useState(true);
@@ -157,9 +156,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   }, [timerActive]);
 
   async function loadUnit() {
-    const { data } = await supabase.from("profiles").select("unit, rest_time, timer_sound, show_rpe").eq("id", user!.id).single();
+    const { data } = await supabase.from("profiles").select("rest_time, timer_sound, show_rpe").eq("id", user!.id).single();
     if (data) {
-      setUnit(data.unit as "kg" | "lbs");
       if (data.rest_time) setDefaultRestTime(data.rest_time);
       if (data.timer_sound !== undefined && data.timer_sound !== null) setTimerSoundEnabled(data.timer_sound);
       if (data.show_rpe !== undefined && data.show_rpe !== null) setShowRPE(data.show_rpe);
@@ -169,6 +167,10 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   function displayWeight(kg: number): string {
     if (unit === "lbs") return Math.round(kg * 2.20462 * 10) / 10 + " lbs";
     return kg + " kg";
+  }
+
+  function convertProgressionLabel(label: string): string {
+    return label.replace(/(\d+\.?\d*)\s*kg/g, (_, num) => displayWeight(parseFloat(num)));
   }
 
   async function loadData() {
@@ -277,7 +279,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           
           const history: ExerciseHistory = { exerciseId: group.exercise.id, exerciseName: group.exercise.name, muscleGroup: group.exercise.muscle_group, sessions };
           const targets: ProgressionTargets = { targetSets: group.targetSets, repRangeMin: group.repRangeMin, repRangeMax: group.repRangeMax, currentWeight: group.targetWeight };
-          const analysis = analyzeProgression(history, targets, unit);
+          const analysis = analyzeProgression(history, targets, "kg");
           info[group.exercise.id] = { analysis, primary: analysis.primaryOption, alternative: analysis.alternativeOption, deload: analysis.deloadOption };
         }
 
@@ -362,7 +364,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
         const roundedOneRM = Math.round(bestSet * 10) / 10;
         setPRInfo({ exercise: exerciseName, oneRM: roundedOneRM });
         setShowPR(true);
-        setNewPRs((prev) => [...prev, `${exerciseName}: ${roundedOneRM} kg`]);
+        setNewPRs((prev) => [...prev, `${exerciseName}: ${displayWeight(roundedOneRM)}`]);
         triggerHaptic("pr");
         setTimeout(() => setShowPR(false), 4000);
 
@@ -426,22 +428,32 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
   }
 
   function handleSetBlur(setId: string, field: string) {
-    const key = `${setId}-${field}`;
-    const raw = draftValues[key];
-    if (raw !== undefined && raw !== "") {
-      const val = parseFloat(raw);
-      if (!isNaN(val)) { updateSet(setId, field, Math.max(0, val)); return; }
+  const key = `${setId}-${field}`;
+  const raw = draftValues[key];
+  if (raw !== undefined && raw !== "") {
+    const val = parseFloat(raw);
+    if (!isNaN(val)) {
+      const toSave = field === "weight" && unit === "lbs"
+        ? Math.round((val / 2.20462) * 100) / 100
+        : Math.max(0, val);
+      updateSet(setId, field, toSave);
+      return;
     }
-    setDraftValues((prev) => { const n = { ...prev }; delete n[key]; return n; });
   }
+  setDraftValues((prev) => { const n = { ...prev }; delete n[key]; return n; });
+}
 
   function getDisplayValue(set: WorkoutSet, field: string): string {
-    const key = `${set.id}-${field}`;
-    if (draftValues[key] !== undefined) return draftValues[key];
-    const val = set[field as keyof WorkoutSet];
-    if (field === "weight" && (val === 0 || val === null || val === undefined)) return "";
-    return String(val ?? "");
+  const key = `${set.id}-${field}`;
+  if (draftValues[key] !== undefined) return draftValues[key];
+  const val = set[field as keyof WorkoutSet];
+  if (field === "weight") {
+    if (val === 0 || val === null || val === undefined) return "";
+    if (unit === "lbs") return String(Math.round((val as number) * 2.20462 * 10) / 10);
+    return String(val);
   }
+  return String(val ?? "");
+}
 
   async function saveSetNote(setId: string, note: string) {
     if (isOnline) await supabase.from("workout_sets").update({ note }).eq("id", setId);
@@ -661,8 +673,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                     <Zap className="h-4 w-4" style={{ color: "hsl(142 71% 45%)" }} />
                   </div>
                   <p className="text-sm font-bold" style={{ color: "hsl(142 71% 45%)" }}>{t("workout_smart", lang)}</p>
-                  <div className="ml-auto flex gap-3 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
-                    <span className="flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />{sp.analysis.current1RM} kg</span>
+                    <div className="ml-auto flex gap-3 text-[10px]" style={{ color: "hsl(var(--muted-foreground-dim))" }}>
+                    <span className="flex items-center gap-0.5"><TrendingUp className="h-3 w-3" />{displayWeight(sp.analysis.current1RM)}</span>
                     {sp.analysis.avgRPE > 0 && <span className="flex items-center gap-0.5">RPE {sp.analysis.avgRPE.toFixed(1)}</span>}
                     {sp.analysis.isPlateau && <span className="flex items-center gap-0.5" style={{ color: "hsl(0 72% 51%)" }}><AlertTriangle className="h-3 w-3" />{t("workout_plateau", lang)}</span>}
                   </div>
@@ -687,8 +699,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                       </p>
                       {sp.primary.confidence === "high" && <span className="text-[8px] px-1 py-0.5 rounded" style={{ backgroundColor: "hsl(142 71% 45% / 0.3)", color: "white" }}>OK</span>}
                     </div>
-                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>{sp.primary.description}</p>
-                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.primary.label}</p>
+                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>{convertProgressionLabel(sp.primary.description)}</p>
+                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === sp.primary.type ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{convertProgressionLabel(sp.primary.label)}</p>
                   </button>
                   <button
                     onClick={() => applyProgression(currentGroup.exercise.id, sp.alternative.type)}
@@ -704,13 +716,13 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                       </p>
                       {sp.alternative.confidence === "high" && <span className="text-[8px] px-1 py-0.5 rounded" style={{ backgroundColor: "hsl(142 71% 45% / 0.3)", color: "white" }}>OK</span>}
                     </div>
-                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>{sp.alternative.description}</p>
-                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{sp.alternative.label}</p>
+                    <p className="text-[10px] leading-tight mb-1.5" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "rgba(255,255,255,0.8)" } : { color: "hsl(var(--muted-foreground-dim))" }}>{convertProgressionLabel(sp.alternative.description)}</p>
+                    <p className="text-xs font-semibold" style={appliedProgression[currentGroup.exercise.id] === sp.alternative.type ? { color: "white" } : { color: "hsl(142 71% 45%)" }}>{convertProgressionLabel(sp.alternative.label)}</p>
                   </button>
                 </div>
                 {sp.deload && (
                   <button onClick={() => applyProgression(currentGroup.exercise.id, "deload")} className="w-full rounded-xl px-3 py-3 text-xs font-semibold active:scale-95 transition-all" style={{ backgroundColor: "hsl(0 72% 51% / 0.08)", border: "1px solid hsl(0 72% 51% / 0.2)", color: "hsl(0 72% 51%)" }}>
-                    📉 {sp.deload.label} — {sp.deload.description}
+                    📉 {convertProgressionLabel(sp.deload.label)} — {convertProgressionLabel(sp.deload.description)}
                   </button>
                 )}
               </div>
@@ -961,7 +973,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold" style={{ color: "hsl(45 93% 47%)" }}>{t("dashboard_new_pr", lang)}</p>
-              <p className="text-xs" style={{ color: "hsl(45 93% 47% / 0.7)" }}>{prInfo.exercise} — {prInfo.oneRM} kg (1RM)</p>
+              <p className="text-xs" style={{ color: "hsl(45 93% 47% / 0.7)" }}>{prInfo.exercise} — {displayWeight(prInfo.oneRM)} (1RM)</p>
             </div>
             <button onClick={() => setShowPR(false)} className="p-1 rounded-lg" style={{ color: "hsl(45 93% 47% / 0.5)" }}>
               <X className="h-4 w-4" />
@@ -976,7 +988,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
           <div className="animate-scale-in" style={{ animation: "scaleInFade 0.4s ease-out forwards" }}>
             <div className="rounded-2xl px-8 py-5 text-center shadow-2xl" style={{ backgroundColor: "#22c55e", boxShadow: "0 0 60px hsl(142 71% 45% / 0.5)" }}>
               <p className="text-2xl font-bold text-white mb-1">🏆 Nouveau record !</p>
-              <p className="text-lg font-semibold text-white/90">{prBadgeInfo.oneRM} kg</p>
+              <p className="text-lg font-semibold text-white/90">{displayWeight(prBadgeInfo.oneRM)}</p>
               <p className="text-xs text-white/70 mt-1">{prBadgeInfo.exercise}</p>
             </div>
           </div>
@@ -1007,8 +1019,8 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                 {exerciseHistory.map((h, i) => (
                   <div key={i} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: "hsl(var(--card-bg-muted))" }}>
                     <span className="text-xs" style={{ color: "hsl(var(--muted-foreground-dim))" }}>{new Date(h.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</span>
-                    <span className="text-xs font-semibold text-[hsl(var(--text-white))]">{h.reps} × {h.weight} kg</span>
-                    <span className="text-xs font-bold" style={{ color: "hsl(142 71% 45%)" }}>{h.oneRM} kg</span>
+                    <span className="text-xs font-semibold text-[hsl(var(--text-white))]">{h.reps} × {displayWeight(h.weight)}</span>
+                    <span className="text-xs font-bold" style={{ color: "hsl(142 71% 45%)" }}>{displayWeight(h.oneRM)}</span>
                   </div>
                 ))}
               </div>
@@ -1060,7 +1072,7 @@ export default function WorkoutDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                   </div>
                   <span className="text-lg font-bold" style={{ color: volumeDiff >= 0 ? "hsl(142 71% 45%)" : "hsl(0 72% 51%)" }}>
-                    {volumeDiff >= 0 ? "+" : ""}{volumeDiff} kg
+                    {volumeDiff >= 0 ? "+" : ""}{displayWeight(Math.abs(volumeDiff)).replace(/ kg| lbs/, "")} {unit}
                   </span>
                 </div>
               </div>

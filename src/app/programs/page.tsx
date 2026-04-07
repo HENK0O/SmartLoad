@@ -60,7 +60,7 @@ const MAX_PROGRAMS = Infinity;
 
 export default function ProgramsPage() {
   const { user, loading } = useAuth();
-  const { lang, setLang } = useApp();
+  const { lang, setLang, unit } = useApp();
   const router = useRouter();
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loadingPrograms, setLoadingPrograms] = useState(true);
@@ -71,7 +71,6 @@ export default function ProgramsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("programs");
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
-  const [unit, setUnit] = useState<"kg" | "lbs">("kg");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteType, setDeleteType] = useState<"program" | "template">("program");
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +95,6 @@ export default function ProgramsPage() {
     if (!user) return;
     loadPrograms();
     loadHistory();
-    loadUnit();
     loadTemplates();
     loadDashboardData();
   }, [user]);
@@ -136,22 +134,6 @@ export default function ProgramsPage() {
       console.error("Exception loading history:", e);
     } finally {
       setLoadingHistory(false);
-    }
-  }
-
-  async function loadUnit() {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("unit")
-        .eq("id", user!.id)
-        .single();
-      if (error) {
-        console.error("Error loading unit:", error);
-      }
-      if (data) setUnit(data.unit as "kg" | "lbs");
-    } catch (e) {
-      console.error("Exception loading unit:", e);
     }
   }
 
@@ -987,12 +969,7 @@ export default function ProgramsPage() {
                   (s.exercises as { name: string })?.name ?? (lang === "en" ? "Exercise" : "Exercice");
                 if (!summary[name]) summary[name] = { totalSets: 0, details: [] };
                 summary[name].totalSets++;
-                const wt =
-                  unit === "lbs"
-                    ? Math.round(s.weight * 2.20462 * 10) / 10
-                    : s.weight;
-                const u = unit === "lbs" ? "lbs" : "kg";
-                summary[name].details.push(`${s.reps}×${wt} ${u}`);
+                summary[name].details.push(`${s.reps}×${displayWeight(s.weight)}`);
               }
 
               const isExpanded = expandedWorkout === w.id;
