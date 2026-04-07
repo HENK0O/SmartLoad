@@ -502,7 +502,7 @@ export function analyzeProgression(
     return {
       ...option,
       weight: convertedWeight,
-      label: option.label.replace(/\d+\.?\d*\s*kg/, formatWeight(option.weight, unit)),
+      label: option.label.replace(/\d+\.?\d*\s*kg/, formatWeight(convertedWeight, unit)),
     };
   };
   
